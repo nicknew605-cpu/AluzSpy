@@ -1,4 +1,6 @@
 local okRT, errRT = xpcall(function()
+	local LOADER = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/refs/heads/main/Stable"
+
 	conns[#conns + 1] = SV.RunService.Heartbeat:Connect(function(dt)
 		if not alive then return end
 		if dt > 3.5 then X.stall = true end
@@ -51,7 +53,7 @@ local okRT, errRT = xpcall(function()
 		X.rules = next(X.block) ~= nil or next(X.mod) ~= nil
 	end
 
-	genv.AluzSpy = {
+	local api = {
 		version = VERSION,
 		nc = F.setNC,
 		mod = F.setMod,
@@ -78,10 +80,60 @@ local okRT, errRT = xpcall(function()
 			warn("[AluzSpy] " .. tostring(js))
 			return js
 		end,
+		find = function(text, limit)
+			text = tostring(text or ""):lower()
+			limit = limit or 20
+			local out = {}
+			for s = N.seq, math.max(1, N.seq - K.LOGCAP + 1), -1 do
+				local r = logs[(s - 1) % K.LOGCAP + 1]
+				if r and r.i == s then
+					local hay = (tostring(r.r) .. " " .. tostring(r.m) .. " " .. table.concat(r.a or {}, " ")):lower()
+					if hay:find(text, 1, true) then
+						out[#out + 1] = { i = r.i, t = r.t, d = r.d, r = r.r, m = r.m, n = r.n, a = r.a, code = r.code }
+						if #out >= limit then break end
+					end
+				end
+			end
+			for i = 1, #out do
+				local o = out[i]
+				warn(string.format("[AluzSpy] #%d %s %s %s (%s)", o.i, o.d, o.r, o.m, table.concat(o.a or {}, ", ")))
+			end
+			return out
+		end,
+		top = function(n)
+			n = n or 10
+			local out = {}
+			for _, reg in ipairs({ stC, stS }) do
+				for _, st in pairs(reg) do
+					out[#out + 1] = { d = st.dir, r = st.full, calls = st.n + st.supp, peak = r2(st.peak), muted = st.mu ~= nil }
+				end
+			end
+			table.sort(out, function(a, b) return a.calls > b.calls end)
+			for i = #out, n + 1, -1 do out[i] = nil end
+			for i = 1, #out do
+				local o = out[i]
+				warn(string.format("[AluzSpy] %s %s calls=%d peak=%s/s%s", o.d, o.r, o.calls, tostring(o.peak), o.muted and " muted" or ""))
+			end
+			return out
+		end,
+		reload = function()
+			shutdown(true)
+			local ok, src = pcall(function() return game:HttpGet(LOADER .. "?v=" .. os.time(), true) end)
+			if not ok or type(src) ~= "string" then return false end
+			local f = loadstring(src)
+			if f then task.defer(f) end
+			return f ~= nil
+		end,
+		help = function()
+			warn("[AluzSpy] nc(bool) mod(name,bool) save() dump(bool) dumpScripts(filter) find(text,n) top(n) stats() debug() errors()")
+			warn("[AluzSpy] decode(file) analyze(file,net) decodeAll() set(key,bool) block(name) modify(name,fn) reset() reload() shutdown()")
+		end,
 	}
+	for k, v in pairs(F.api or {}) do api[k] = v end
+	genv.AluzSpy = api
 
 	if F.notify then F.notify("Loaded " .. VERSION) end
-	warn("[AluzSpy] loaded " .. VERSION)
+	warn("[AluzSpy] loaded " .. VERSION .. " (AluzSpy.help() for commands)")
 
 	task.spawn(F.boot)
 
