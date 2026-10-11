@@ -1,56 +1,106 @@
-local base = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/refs/heads/main/src/"
-local order = {
-	"core.lua",
-	"ai.lua",
-	"hooks.lua",
-	"dump.lua",
-	"save.lua",
-	"ui.lua",
-	"runtime.lua",
+local BASE = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/refs/heads/main/src/"
+local CACHE = "AluzSpy/bundle.lua"
+local ORDER = {
+	{ "core", true }, { "dump", true }, { "decode", false }, { "hooks", true }, { "hooks2", false },
+	{ "ai", true }, { "save", true }, { "ui", true }, { "runtime", true },
 }
 
 local function notify(title, text)
 	pcall(function()
-		game:GetService("StarterGui"):SetCore("SendNotification", {
-			Title = title,
-			Text = text,
-			Duration = 5,
-		})
+		game:GetService("StarterGui"):SetCore("SendNotification", { Title = title, Text = tostring(text), Duration = 6 })
 	end)
 end
 
-local parts = {}
-local failed = {}
+local function fail(msg)
+	warn("[AluzSpy loader] " .. tostring(msg))
+	notify("AluzSpy FAIL", tostring(msg):sub(1, 90))
+end
 
-for i = 1, #order do
-	local name = order[i]
-	local ok, src = pcall(function()
-		return game:HttpGet(base .. name)
+local stamp = tostring(os.time())
+local results, pending = {}, #ORDER
+for i = 1, #ORDER do
+	task.spawn(function()
+		for _ = 1, 2 do
+			local ok, body = pcall(function()
+				return game:HttpGet(BASE .. ORDER[i][1] .. ".lua?v=" .. stamp, true)
+			end)
+			if ok and type(body) == "string" and #body > 20 then
+				results[i] = body
+				break
+			end
+			task.wait(0.4)
+		end
+		pending = pending - 1
 	end)
-	if not ok or type(src) ~= "string" or #src < 20 then
-		failed[#failed + 1] = name
-		notify("AluzSpy", "Download fail: " .. name)
+end
+
+local t0 = os.clock()
+while pending > 0 and os.clock() - t0 < 25 do
+	task.wait(0.05)
+end
+
+local parts, missing = {}, {}
+for i = 1, #ORDER do
+	if results[i] then
+		parts[#parts + 1] = results[i]
+	elseif ORDER[i][2] then
+		missing[#missing + 1] = ORDER[i][1]
 	else
-		parts[#parts + 1] = src .. "\n"
+		warn("[AluzSpy loader] optional module skipped: " .. ORDER[i][1])
 	end
 end
 
-if #failed > 0 then
-	notify("AluzSpy FAIL", "Missing: " .. table.concat(failed, ", "))
-	return
+local function readCache()
+	if type(isfile) == "function" and type(readfile) == "function" then
+		local ok, has = pcall(isfile, CACHE)
+		if ok and has then
+			local ok2, body = pcall(readfile, CACHE)
+			if ok2 and type(body) == "string" and #body > 1000 then return body end
+		end
+	end
+	return nil
 end
 
-local src = table.concat(parts, "\n")
-local fn, err = loadstring(src, "AluzSpyBundle")
+local src, fromCache
+if #missing == 0 then
+	src = table.concat(parts, "\n")
+else
+	src = readCache()
+	fromCache = true
+	if not src then
+		fail("missing: " .. table.concat(missing, ", "))
+		return
+	end
+	warn("[AluzSpy loader] offline, using cached bundle (missing: " .. table.concat(missing, ", ") .. ")")
+end
+
+local fn, err = loadstring(src, "=AluzSpy")
 if not fn then
-	notify("AluzSpy FAIL", "Compile: " .. tostring(err):sub(1, 80))
+	for i = 1, #ORDER do
+		if results[i] then
+			local f, e = loadstring(results[i], "=" .. ORDER[i][1])
+			if not f then
+				fail("syntax in " .. ORDER[i][1] .. ": " .. tostring(e))
+				return
+			end
+		end
+	end
+	fail("bundle compile: " .. tostring(err))
 	return
 end
 
-local ok, runErr = pcall(fn)
+if not fromCache and type(writefile) == "function" then
+	pcall(function()
+		if type(makefolder) == "function" and type(isfolder) == "function" and not isfolder("AluzSpy") then
+			makefolder("AluzSpy")
+		end
+		writefile(CACHE, src)
+	end)
+end
+
+local ok, runErr = xpcall(fn, function(e)
+	return tostring(e) .. "\n" .. debug.traceback()
+end)
 if not ok then
-	notify("AluzSpy FAIL", "Run: " .. tostring(runErr):sub(1, 90))
-	return
+	fail("run: " .. tostring(runErr))
 end
-
-notify("AluzSpy", "Loaded OK")
