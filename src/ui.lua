@@ -130,6 +130,15 @@ local okUI, errUI = xpcall(function()
 	}, pop)
 	local chipHolder = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 4, Visible = false }, pop)
 
+	local function setCfg(key)
+		return function(v)
+			CFG[key] = v
+			if key == "dump" then S.dump = v end
+			F.cfgSave()
+			return v
+		end
+	end
+
 	local items = {
 		{ "FN", function() return MOD.fn end, function(v) return F.setMod("fn", v) end },
 		{ "S2C", function() return MOD.s2c end, function(v) return F.setMod("s2c", v) end },
@@ -142,10 +151,13 @@ local okUI, errUI = xpcall(function()
 		{ "RW", function() return MOD.rw end, function(v) return F.setMod("rw", v) end },
 		{ "WS", function() return MOD.ws end, function(v) return F.setMod("ws", v) end },
 		{ "REQ", function() return MOD.req end, function(v) return F.setMod("req", v) end },
-		{ "DUMP", function() return S.dump end, function(v) S.dump = v CFG.dump = v F.cfgSave() return v end },
-		{ "TREE", function() return CFG.tree end, function(v) CFG.tree = v F.cfgSave() return v end },
-		{ "CODE", function() return CFG.code end, function(v) CFG.code = v F.cfgSave() return v end },
-		{ "CALR", function() return CFG.callerDump end, function(v) CFG.callerDump = v F.cfgSave() return v end },
+		{ "HX", function() return MOD.hx end, function(v) return F.setMod("hx", v) end },
+		{ "DUMP", function() return S.dump end, setCfg("dump") },
+		{ "TREE", function() return CFG.tree end, setCfg("tree") },
+		{ "CODE", function() return CFG.code end, setCfg("code") },
+		{ "CALR", function() return CFG.callerDump end, setCfg("callerDump") },
+		{ "DEC", function() return CFG.decode end, setCfg("decode") },
+		{ "SBOX", function() return CFG.sandbox end, setCfg("sandbox") },
 		{ "RST", function() return false end, function() F.reset() notify("Reset") return false end },
 	}
 	local chips = {}
@@ -194,7 +206,7 @@ local okUI, errUI = xpcall(function()
 		chipHolder.Visible = mode == "mods"
 		popLabel.Visible = mode ~= "mods"
 		if mode == "mods" then refreshChips() else popLabel.Text = popText(mode) end
-		popH = mode == "mods" and 106 or 82
+		popH = mode == "mods" and 130 or 82
 		pop.Visible = true
 		TS:Create(pop, TI_FOLD, { Size = UDim2.fromOffset(W_OPEN, popH) }):Play()
 	end
