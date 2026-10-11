@@ -19,7 +19,7 @@ do
 	end
 end
 
-local VERSION = "1.2-vip"
+local VERSION = "1.2-max"
 local clock = os.clock
 local pack = table.pack
 local unpack = table.unpack or unpack
@@ -33,8 +33,10 @@ local CAP = {}
 for _, n in ipairs({
 	"hookfunction", "hookmetamethod", "clonefunction", "getcallbackvalue", "checkcaller", "getcallingscript",
 	"newcclosure", "getnamecallmethod", "setnamecallmethod", "writefile", "readfile", "appendfile", "isfile",
-	"makefolder", "delfile", "setclipboard", "decompile", "getscriptbytecode", "getnilinstances", "getscripts",
-	"getloadedmodules", "request", "loadstring",
+	"makefolder", "isfolder", "delfile", "listfiles", "setclipboard", "decompile", "getscriptbytecode",
+	"getnilinstances", "getscripts", "getloadedmodules", "request", "loadstring", "loadfile", "dofile",
+	"getconnections", "firesignal", "fireclickdetector", "fireproximityprompt", "firetouchinterest",
+	"setfenv", "getfenv",
 }) do
 	CAP[n] = type(genv[n]) == "function"
 end
@@ -74,12 +76,13 @@ local QCAP, WIN = 3072, 1.2
 
 local S = { nc = false, dump = true }
 local MOD, INST = {}, {}
-for _, n in ipairs({ "nc", "fn", "s2c", "sys", "net", "http", "ls", "cb", "ni", "rw", "ws", "req" }) do
+for _, n in ipairs({ "nc", "fn", "s2c", "sys", "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx" }) do
 	MOD[n] = false
 	INST[n] = false
 end
 local CFG = {
 	nc = true, dump = true, code = true, tree = true, callerDump = true, autoScripts = false, update = true,
+	decode = true, sandbox = false, net = false,
 	mods = {}, crashes = {},
 }
 local alive, busy = true, false
@@ -117,7 +120,8 @@ local FS = {}
 local saveNow, handle, uiCount
 local IN = {}
 local F = { h = {}, ticks = {}, stages = {}, defMods = {
-	fn = true, s2c = true, sys = true, net = true, http = true, ls = true, cb = true, ni = true, rw = true, ws = true, req = false,
+	fn = true, s2c = true, sys = true, net = true, http = true, ls = true, cb = true, ni = true, rw = true, ws = true,
+	req = false, hx = true,
 } }
 
 for k, v in pairs(F.defMods) do CFG.mods[k] = v end
@@ -235,7 +239,7 @@ do
 		local ts = type(txt) == "string" and tonumber(txt:match("\n(%d+)")) or nil
 		if not ts or math.abs(os.time() - ts) < 1800 then
 			BAN.safe = true
-			for _, k in ipairs({ "net", "http", "ls", "cb", "ni", "rw", "ws", "req" }) do BAN.set[k] = true end
+			for _, k in ipairs({ "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx" }) do BAN.set[k] = true end
 			local culprit = stage
 			if stage == "net-active" then culprit = "net" end
 			if culprit and culprit ~= "boot" then
