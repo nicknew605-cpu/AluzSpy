@@ -83,6 +83,7 @@ do
 			},
 			spam = F.spamList(),
 			last_errors = errMap,
+			ext = F.ext and F.ext() or nil,
 		}
 		local head = '{"schema":4,"meta":' .. (F.enc(meta) or "{}") .. ',"remotes":' .. (F.enc(remList()) or "[]") .. ',"logs":['
 		local lines = {}
