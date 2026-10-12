@@ -1,0 +1,41 @@
+Although it's a bit late, I've created it 😓
+
+Change log from 1.2 Max (1.2.1 Beta) to 1.2.1 Stable:
+
+Menu: now simplified to just [ - ] [counter] [SAVE]; more compact than the previous version.
+
+Removed the NC button and chip panel.
+
+All modules activate automatically; the first run of this version resets all configurations to "enabled."
+
+Consolidated: clicking SAVE generates a `Session_<place>_<time>.txt` file with clearly organized sections (loader, UI lib, main script, game, bytecode, encrypted payload, critical remote calls, diff).
+
+Dumps are kept in RAM, eliminating the clutter of 30–40 separate files.
+
+To split files as before, call `AluzSpy.split(true)`.
+
+Crash protection: each dump is temporarily written to `AluzSpy/.spool`.
+
+If this file remains upon the next launch, the tool automatically consolidates it into `Recovered_*.txt`.
+
+Deep Dump: detects Luarmor, Luraph, MoonSec, IronBrew, etc., and activates a 60-second deep-scan mode. The tool retains the encrypted payload and performs a secondary scan.
+
+`loadstring` operations log execution results and new global variables.
+
+Stage tracking: visualizes the loading chain (loader → HttpGet → loadstring → ...) with status indicators (dumped vs. missing).
+
+Missing payload: provides alerts—e.g., "loaded but not executed," "loader VM lacks internal payload," or "UI lib present but feature code missing"—along with suggested next steps.
+
+Smart deduplication: recognizes versions differing only by key or HWID. Detects changes in URLs or `script_id` between runs and automatically generates a diff that includes structural changes.
+
+Hybrid dump: for scripts invoking remote calls, both source code and bytecode are saved and linked together.
+
+Improved obfuscator identification with detailed reasoning. Risk factors clearly explained: heavy VM usage, anti-tamper mechanisms, constant encryption, control-flow obfuscation, etc. Continuous hook health monitoring: test each hook every 20 seconds, auto-reinstall, and auto-reactivate temporarily interrupted hooks. The actor hook automatically detects duplicate logs and stops further injection.
+Loading order (src/): core, core2, dump, decode, dump2, hooks, hooks2, deep, health, actor, ai, chain, analysis, hybrid, save, ui, runtime.
+
+Retain: dump, decode, hooks, hooks2, ai.
+Move core2 and analysis from beta/ to src/ if applicable.
+Replace: dump2, health, actor, save, ui, runtime, loader.
+Create new: deep, chain, hybrid.
+
+Got a bug? Send an email to nicknew605@gmail.com or join my newest Discord server 😶‍🌫️
