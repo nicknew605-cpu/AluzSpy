@@ -38,4 +38,6 @@ Move core2 and analysis from beta/ to src/ if applicable.
 Replace: dump2, health, actor, save, ui, runtime, loader.
 Create new: deep, chain, hybrid.
 
-Got a bug? Send an email to nicknew605@gmail.com or join my newest Discord server 😶‍🌫️
+Got a bug? Send an email to nicknew605@gmail.com or join my newest Discord server 😶‍🌫️ 
+
+https://discord.gg/5U4xD7qB6
