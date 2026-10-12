@@ -58,6 +58,7 @@ local okRT, errRT = xpcall(function()
 		nc = F.setNC,
 		mod = F.setMod,
 		save = function() return saveNow("manual") end,
+		report = F.report,
 		dump = function(b)
 			S.dump = b ~= false
 			CFG.dump = S.dump
@@ -74,8 +75,8 @@ local okRT, errRT = xpcall(function()
 		errors = function() return errMap end,
 		debug = function()
 			local js = F.enc({
-				stats = F.stats(), errors = errMap, banned = BAN.list, disabled = BAN.disabled,
-				recovered = X.recovered, capabilities = CAP,
+				stats = F.stats(), errors = errMap, banned = BAN.list, recovered = X.recovered,
+				capabilities = CAP, health = F.extra.health and F.extra.health() or nil,
 			})
 			warn("[AluzSpy] " .. tostring(js))
 			return js
@@ -125,21 +126,25 @@ local okRT, errRT = xpcall(function()
 			return f ~= nil
 		end,
 		help = function()
-			warn("[AluzSpy] nc(bool) mod(name,bool) save() dump(bool) dumpScripts(filter) find(text,n) top(n) stats() debug() errors()")
-			warn("[AluzSpy] decode(file) analyze(file,net) decodeAll() set(key,bool) block(name) modify(name,fn) reset() reload() shutdown()")
+			warn("[AluzSpy] save() report() missing() chain() split(bool) find(text,n) top(n) stats() debug() errors()")
+			warn("[AluzSpy] decode(file) analyze(file,net) decodeAll() gcmap(deep) whoCalls(name) callgraph() tree() scriptDiff()")
+			warn("[AluzSpy] health() actors() dump(bool) dumpScripts(filter) block(name) modify(name,fn) reset() reload() shutdown()")
 		end,
 	}
-	for k, v in pairs(F.api or {}) do api[k] = v end
+	for k, v in pairs(F.api or {}) do
+		if api[k] == nil then api[k] = v end
+	end
 	genv.AluzSpy = api
 
 	if F.notify then F.notify("Loaded " .. VERSION) end
+	if F.recoveredFile and F.notify then F.notify("Recovered dumps: " .. tostring(F.recoveredFile):match("[^/]+$")) end
 	warn("[AluzSpy] loaded " .. VERSION .. " (AluzSpy.help() for commands)")
 
 	task.spawn(F.boot)
 
 	if CFG.autoScripts then
 		task.delay(12, function()
-			if alive then F.scanScripts() end
+			if alive and F.scanScripts then F.scanScripts() end
 		end)
 	end
 
