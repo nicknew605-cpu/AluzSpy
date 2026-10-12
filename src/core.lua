@@ -19,7 +19,7 @@ do
 	end
 end
 
-local VERSION = "1.2-max"
+local VERSION = (getgenv and getgenv().AluzChannel == "Beta") and "1.2.1-beta" or "1.2-max"
 local clock = os.clock
 local pack = table.pack
 local unpack = table.unpack or unpack
