@@ -1,11 +1,11 @@
 local okUI, errUI = xpcall(function()
 	local TS, UIS = SV.TweenService, SV.UserInputService
-	local W_OPEN, W_CLOSED, H = 170, 28, 28
+	local W_OPEN, W_CLOSED, H = 126, 26, 26
 	local C_BG = Color3.fromRGB(14, 15, 20)
 	local C_ACC = Color3.fromRGB(0, 210, 150)
-	local C_NEU_BG = Color3.fromRGB(32, 34, 44)
+	local C_NEU = Color3.fromRGB(32, 34, 44)
 	local C_TXT = Color3.fromRGB(225, 228, 238)
-	local C_ON_BG, C_ON_TX = Color3.fromRGB(22, 78, 52), Color3.fromRGB(110, 255, 170)
+	local C_OK_BG, C_OK_TX = Color3.fromRGB(22, 78, 52), Color3.fromRGB(110, 255, 170)
 	local C_BAD_BG, C_BAD_TX = Color3.fromRGB(86, 32, 32), Color3.fromRGB(255, 130, 130)
 	local TI_DOWN = TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local TI_UP = TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -37,9 +37,7 @@ local okUI, errUI = xpcall(function()
 		if not parented then
 			parented = pcall(function() gui.Parent = SV.CoreGui end) and gui.Parent ~= nil
 		end
-		if not parented then
-			gui.Parent = LP:WaitForChild("PlayerGui")
-		end
+		if not parented then gui.Parent = LP:WaitForChild("PlayerGui") end
 	end
 
 	local root = mk("Frame", {
@@ -47,32 +45,27 @@ local okUI, errUI = xpcall(function()
 		BackgroundColor3 = C_BG, BackgroundTransparency = 0.05, BorderSizePixel = 0,
 		ClipsDescendants = true, Active = true, ZIndex = 1,
 	}, gui)
-	mk("UICorner", { CornerRadius = UDim.new(0, 14) }, root)
+	mk("UICorner", { CornerRadius = UDim.new(0, 13) }, root)
 	mk("UIStroke", { Thickness = 1.2, Color = C_ACC, Transparency = 0.25 }, root)
 
 	local function isPress(i)
 		return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch
 	end
 
-	local function pressFx(btn)
-		local sc = mk("UIScale", { Scale = 1 }, btn)
-		btn.InputBegan:Connect(function(i)
+	local function mkBtn(text, x, y, w, h, radius)
+		local b = mk("TextButton", {
+			Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(x, y), BackgroundColor3 = C_NEU,
+			TextColor3 = C_TXT, Text = text, Font = Enum.Font.GothamBold, TextSize = 10, BorderSizePixel = 0,
+			AutoButtonColor = false, ZIndex = 2,
+		}, root)
+		mk("UICorner", { CornerRadius = UDim.new(0, radius) }, b)
+		local sc = mk("UIScale", { Scale = 1 }, b)
+		b.InputBegan:Connect(function(i)
 			if isPress(i) then TS:Create(sc, TI_DOWN, { Scale = 0.86 }):Play() end
 		end)
-		btn.InputEnded:Connect(function(i)
+		b.InputEnded:Connect(function(i)
 			if isPress(i) then TS:Create(sc, TI_UP, { Scale = 1 }):Play() end
 		end)
-	end
-
-	local function mkBtn(cls, text, x, y, w, h, radius, parent)
-		local b = mk(cls, {
-			Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(x, y),
-			BackgroundColor3 = C_NEU_BG, TextColor3 = C_TXT, Text = text,
-			Font = Enum.Font.GothamBold, TextSize = 10, BorderSizePixel = 0,
-			AutoButtonColor = false, ZIndex = 2,
-		}, parent or root)
-		mk("UICorner", { CornerRadius = UDim.new(0, radius) }, b)
-		pressFx(b)
 		return b
 	end
 
@@ -80,45 +73,18 @@ local okUI, errUI = xpcall(function()
 		TS:Create(btn, TI_COL, { BackgroundColor3 = bg, TextColor3 = fg }):Play()
 	end
 
-	local held = {}
-	local function longPress(btn, fn)
-		local pid, down = 0, false
-		btn.InputBegan:Connect(function(i)
-			if isPress(i) then
-				pid = pid + 1
-				local my = pid
-				down = true
-				held[btn] = false
-				task.delay(0.5, function()
-					if down and pid == my then
-						held[btn] = true
-						fn()
-					end
-				end)
-			end
-		end)
-		btn.InputEnded:Connect(function(i)
-			if isPress(i) then down = false end
-		end)
-	end
-
-	local foldBtn = mkBtn("TextButton", "-", 3, 3, 22, 22, 11)
+	local foldBtn = mkBtn("-", 2, 2, 22, 22, 11)
 	foldBtn.TextSize = 14
 	foldBtn.TextColor3 = C_ACC
-	local cnt = mkBtn("TextButton", "0", 30, 0, 50, H, 0)
+	local cnt = mkBtn("0", 28, 0, 48, H, 0)
 	cnt.BackgroundTransparency = 1
 	cnt.TextColor3 = Color3.fromRGB(150, 155, 175)
 	cnt.TextXAlignment = Enum.TextXAlignment.Left
 	cnt.TextTruncate = Enum.TextTruncate.AtEnd
-	local ncBtn = mkBtn("TextButton", "NC", 82, 4, 38, 20, 10)
-	local saveBtn = mkBtn("TextButton", "SAVE", 124, 4, 42, 20, 10)
-
-	local function paintNC()
-		if S.nc then paint(ncBtn, C_ON_BG, C_ON_TX) else paint(ncBtn, C_BAD_BG, C_BAD_TX) end
-	end
+	local saveBtn = mkBtn("SAVE", 80, 3, 42, 20, 10)
 
 	local pop = mk("Frame", {
-		Size = UDim2.fromOffset(W_OPEN, 0), BackgroundColor3 = C_BG, BackgroundTransparency = 0.05,
+		Size = UDim2.fromOffset(190, 0), BackgroundColor3 = C_BG, BackgroundTransparency = 0.05,
 		BorderSizePixel = 0, ClipsDescendants = true, Visible = false, ZIndex = 3,
 	}, gui)
 	mk("UICorner", { CornerRadius = UDim.new(0, 12) }, pop)
@@ -128,94 +94,44 @@ local okUI, errUI = xpcall(function()
 		TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
 		Font = Enum.Font.Code, TextSize = 10, TextColor3 = C_TXT, Text = "", ZIndex = 4,
 	}, pop)
-	local chipHolder = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 4, Visible = false }, pop)
-
-	local function setCfg(key)
-		return function(v)
-			CFG[key] = v
-			if key == "dump" then S.dump = v end
-			F.cfgSave()
-			return v
-		end
-	end
-
-	local items = {
-		{ "FN", function() return MOD.fn end, function(v) return F.setMod("fn", v) end },
-		{ "S2C", function() return MOD.s2c end, function(v) return F.setMod("s2c", v) end },
-		{ "CB", function() return MOD.cb end, function(v) return F.setMod("cb", v) end },
-		{ "NI", function() return MOD.ni end, function(v) return F.setMod("ni", v) end },
-		{ "SYS", function() return MOD.sys end, function(v) return F.setMod("sys", v) end },
-		{ "NET", function() return MOD.net end, function(v) return F.setMod("net", v) end },
-		{ "HTTP", function() return MOD.http end, function(v) return F.setMod("http", v) end },
-		{ "LS", function() return MOD.ls end, function(v) return F.setMod("ls", v) end },
-		{ "RW", function() return MOD.rw end, function(v) return F.setMod("rw", v) end },
-		{ "WS", function() return MOD.ws end, function(v) return F.setMod("ws", v) end },
-		{ "REQ", function() return MOD.req end, function(v) return F.setMod("req", v) end },
-		{ "HX", function() return MOD.hx end, function(v) return F.setMod("hx", v) end },
-		{ "DUMP", function() return S.dump end, setCfg("dump") },
-		{ "TREE", function() return CFG.tree end, setCfg("tree") },
-		{ "CODE", function() return CFG.code end, setCfg("code") },
-		{ "CALR", function() return CFG.callerDump end, setCfg("callerDump") },
-		{ "DEC", function() return CFG.decode end, setCfg("decode") },
-		{ "SBOX", function() return CFG.sandbox end, setCfg("sandbox") },
-		{ "RST", function() return false end, function() F.reset() notify("Reset") return false end },
-	}
-	for _, it in ipairs(F.extraChips or {}) do items[#items + 1] = it end
-	local chips = {}
-	local function paintChip(b, on)
-		paint(b, on and C_ON_BG or C_NEU_BG, on and C_ON_TX or C_TXT)
-	end
-	for i, it in ipairs(items) do
-		local col, row = (i - 1) % 4, floor((i - 1) / 4)
-		local b = mkBtn("TextButton", it[1], 4 + col * 41, 4 + row * 24, 38, 20, 6, chipHolder)
-		b.TextSize = 9
-		b.ZIndex = 5
-		chips[i] = b
-		b.Activated:Connect(function()
-			local cur = it[2]()
-			local res = it[3](not cur)
-			paintChip(b, it[2]() == true or res == true)
-		end)
-	end
-	local function refreshChips()
-		for i, it in ipairs(items) do paintChip(chips[i], it[2]() == true) end
-	end
 
 	local popMode, popH = nil, 0
 
 	local function popText(mode)
 		if mode == "stats" then
 			local s = F.stats()
-			return string.format(
-				"calls %d  logged %d\nmerged %d  muted %d\nsuppressed %d  remotes %d\ndumps %d  errors %d\nfps %d  mem %dMB  load %d",
-				s.total, s.logged, s.merged, s.muted, s.suppressed, s.remotes, s.dumps, s.errors, s.fps, s.mem, s.load)
+			local cs, parts = F.catSummary and F.catSummary() or {}, {}
+			for k, v in pairs(cs) do parts[#parts + 1] = k .. " " .. v end
+			table.sort(parts)
+			return string.format("calls %d  logged %d\nremotes %d  muted %d  errors %d\ndumps %d  %s\nfps %d  mem %dMB\nhooks %s\nwarnings %d",
+				s.total, s.logged, s.remotes, s.muted, s.errors, s.dumps, table.concat(parts, " "), s.fps, s.mem,
+				F.hookLine and F.hookLine() or "n/a", F.warnN or 0)
 		end
-		return "save:\n" .. PATH.session .. "\n\ndump:\n" .. (PATH.ok and PATH.dumpDir or "workspace root")
+		return "session file:\n" .. PATH.session .. "\n\ncache/spool:\n" .. PATH.dir
 	end
 
 	local function showPop(mode)
 		if popMode == mode then
 			popMode = nil
 			popH = 0
-			TS:Create(pop, TI_FOLD, { Size = UDim2.fromOffset(W_OPEN, 0) }):Play()
+			TS:Create(pop, TI_FOLD, { Size = UDim2.fromOffset(190, 0) }):Play()
 			task.delay(0.33, function()
 				if popMode == nil then pop.Visible = false end
 			end)
 			return
 		end
 		popMode = mode
-		chipHolder.Visible = mode == "mods"
-		popLabel.Visible = mode ~= "mods"
-		if mode == "mods" then refreshChips() else popLabel.Text = popText(mode) end
-		popH = mode == "mods" and (math.ceil(#items / 4) * 24 + 10) or 82
+		popLabel.Text = popText(mode)
+		popH = mode == "stats" and 92 or 80
 		pop.Visible = true
-		TS:Create(pop, TI_FOLD, { Size = UDim2.fromOffset(W_OPEN, popH) }):Play()
+		TS:Create(pop, TI_FOLD, { Size = UDim2.fromOffset(190, popH) }):Play()
 	end
 
 	uiCount = function()
 		local s = F.fmt(N.total)
 		local mn = #muteList
 		if mn > 0 then s = s .. " m" .. mn end
+		if (F.warnN or 0) > 0 then s = s .. " !" end
 		if X.recovered then s = "R " .. s elseif BAN.safe then s = "S " .. s end
 		cnt.Text = s
 		if popMode == "stats" then popLabel.Text = popText("stats") end
@@ -289,39 +205,35 @@ local okUI, errUI = xpcall(function()
 		TS:Create(root, TI_FOLD, { Size = UDim2.fromOffset(curW, H) }):Play()
 	end)
 
-	function F.setNC(on)
-		if on then
-			if not INST.nc and not IN.nc() then
-				notify("NC: hook failed")
-				S.nc = false
-				paintNC()
-				return false
-			end
-			if not INST.fn then pcall(IN.fn) end
-			S.nc = true
-		else
-			S.nc = false
-		end
-		CFG.nc = S.nc
-		paintNC()
-		return S.nc
-	end
-
 	cnt.Activated:Connect(function() showPop("stats") end)
-	longPress(ncBtn, function() showPop("mods") end)
-	longPress(saveBtn, function() showPop("path") end)
 
-	ncBtn.Activated:Connect(function()
-		if held[ncBtn] then held[ncBtn] = false return end
-		F.setNC(not S.nc)
+	local pid, down, held = 0, false, false
+	saveBtn.InputBegan:Connect(function(i)
+		if isPress(i) then
+			pid = pid + 1
+			local my = pid
+			down, held = true, false
+			task.delay(0.5, function()
+				if down and pid == my then
+					held = true
+					showPop("path")
+				end
+			end)
+		end
+	end)
+	saveBtn.InputEnded:Connect(function(i)
+		if isPress(i) then down = false end
 	end)
 
 	saveBtn.Activated:Connect(function()
-		if held[saveBtn] then held[saveBtn] = false return end
+		if held then
+			held = false
+			return
+		end
 		local ok, res = saveNow("manual")
 		saveBtn.Text = ok and "OK" or "ERR"
 		if ok then
-			paint(saveBtn, C_ON_BG, C_ON_TX)
+			paint(saveBtn, C_OK_BG, C_OK_TX)
 			notify(tostring(res):match("[^/]+$") or res)
 		else
 			paint(saveBtn, C_BAD_BG, C_BAD_TX)
@@ -330,15 +242,29 @@ local okUI, errUI = xpcall(function()
 		task.delay(1.4, function()
 			if saveBtn.Parent then
 				saveBtn.Text = "SAVE"
-				paint(saveBtn, C_NEU_BG, C_TXT)
+				paint(saveBtn, C_NEU, C_TXT)
 			end
 		end)
 	end)
 
+	function F.setNC(on)
+		if on then
+			if not INST.nc and not IN.nc() then
+				S.nc = false
+				return false
+			end
+			if not INST.fn then pcall(IN.fn) end
+			S.nc = true
+		else
+			S.nc = false
+		end
+		CFG.nc = S.nc
+		return S.nc
+	end
+
+	F.paintNC = function() end
 	F.gui = gui
 	F.notify = notify
-	F.paintNC = paintNC
-	paintNC()
 	uiCount()
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()
