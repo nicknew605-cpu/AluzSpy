@@ -160,6 +160,7 @@ local okUI, errUI = xpcall(function()
 		{ "SBOX", function() return CFG.sandbox end, setCfg("sandbox") },
 		{ "RST", function() return false end, function() F.reset() notify("Reset") return false end },
 	}
+	for _, it in ipairs(F.extraChips or {}) do items[#items + 1] = it end
 	local chips = {}
 	local function paintChip(b, on)
 		paint(b, on and C_ON_BG or C_NEU_BG, on and C_ON_TX or C_TXT)
@@ -206,7 +207,7 @@ local okUI, errUI = xpcall(function()
 		chipHolder.Visible = mode == "mods"
 		popLabel.Visible = mode ~= "mods"
 		if mode == "mods" then refreshChips() else popLabel.Text = popText(mode) end
-		popH = mode == "mods" and 130 or 82
+		popH = mode == "mods" and (math.ceil(#items / 4) * 24 + 10) or 82
 		pop.Visible = true
 		TS:Create(pop, TI_FOLD, { Size = UDim2.fromOffset(W_OPEN, popH) }):Play()
 	end
