@@ -1,7 +1,10 @@
 local okAC, errAC = xpcall(function()
 	if not F.job then return end
 
-	local AC = { id = nil, ev = nil, n = 0, msgs = 0, failed = 0, notes = {}, map = {}, mapn = 0, last = 0, done = setmetatable({}, weak) }
+	local AC = {
+		id = nil, ev = nil, n = 0, msgs = 0, failed = 0, dups = 0, fresh = 0, shared = false,
+		notes = {}, map = {}, mapn = 0, last = 0, done = setmetatable({}, weak),
+	}
 
 	local PAYLOAD = [==[
 local ID = __ID__
@@ -56,21 +59,7 @@ if okh and type(o) == "function" then
 	fire("H", AX, "hooked")
 else
 	fire("H", AX, "failed")
-	return
 end
-pcall(function()
-	if not hookfunction then return end
-	local re = Instance.new("RemoteEvent")
-	local fn = re.FireServer
-	local oldf
-	oldf = hookfunction(fn, function(self, ...)
-		if typeof(self) == "Instance" and not ck() and not (last == self and clock() - lastT < 0.004) then
-			seq = seq + 1
-			send("C", seq, "FireServer", self, select("#", ...), ...)
-		end
-		return oldf(self, ...)
-	end)
-end)
 ]==]
 
 	local function onMsg(kind, ax, id, m, self, n, ...)
@@ -78,6 +67,14 @@ end)
 		AC.msgs = AC.msgs + 1
 		if kind == "C" then
 			if not S.nc or typeof(self) ~= "Instance" then return end
+			if lastNcSelf == self and clock() - lastNcT < 0.12 then
+				AC.dups = AC.dups + 1
+				if AC.dups >= 6 and AC.dups >= AC.fresh * 2 then
+					AC.shared = true
+				end
+				return
+			end
+			AC.fresh = AC.fresh + 1
 			local mu = mutedC[self]
 			if mu then
 				local c = mu.c + 1
@@ -115,7 +112,7 @@ end)
 	end
 
 	local function poll()
-		if not (MOD.ac and INST.ac) then return end
+		if not (MOD.ac and INST.ac) or AC.shared or AC.failed > 6 then return end
 		local ok, list = pcall(getactors)
 		if not ok or type(list) ~= "table" then return end
 		for i = 1, math.min(#list, 24) do
@@ -141,8 +138,7 @@ end)
 		if typeof(a) == "Instance" then id, ev = b, a end
 		if id == nil or ev == nil then return false end
 		local sig = ev.Event or ev
-		local okc = pcall(function() AC.conn = sig:Connect(onMsg) end)
-		if not okc then return false end
+		if not pcall(function() AC.conn = sig:Connect(onMsg) end) then return false end
 		AC.id, AC.ev = id, ev
 		INST.ac = true
 		MOD.ac = true
@@ -159,15 +155,19 @@ end)
 
 	F.stage("ac", 14, IN.ac)
 
+	local function info()
+		return {
+			enabled = MOD.ac, injected = AC.n, failed = AC.failed, messages = AC.msgs,
+			fresh = AC.fresh, duplicates = AC.dups, shared_metatable = AC.shared, notes = AC.notes,
+		}
+	end
+	F.api = F.api or {}
 	F.api.actors = function()
-		local out = { enabled = MOD.ac, injected = AC.n, failed = AC.failed, messages = AC.msgs, notes = AC.notes }
+		local out = info()
 		warn("[AluzSpy] actors: " .. tostring(F.enc(out)))
 		return out
 	end
-	F.extra.actors = function()
-		return { enabled = MOD.ac, injected = AC.n, failed = AC.failed, messages = AC.msgs, notes = AC.notes }
-	end
-	F.extraChips[#F.extraChips + 1] = { "ACT", function() return MOD.ac end, function(v) return F.setMod("ac", v) end }
+	F.extra.actors = info
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()
 end)
