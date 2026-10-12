@@ -212,8 +212,10 @@ end
 local function fault(mod)
 	N.err = N.err + 1
 	faults[mod] = (faults[mod] or 0) + 1
-	if faults[mod] >= 30 then
+	if faults[mod] >= 30 and MOD[mod] then
 		MOD[mod] = false
+		X.tripped = X.tripped or {}
+		X.tripped[mod] = clock()
 	end
 end
 
