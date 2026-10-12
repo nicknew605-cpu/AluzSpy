@@ -1,7 +1,27 @@
 local okH, errH = xpcall(function()
 	if not F.job then return end
 
-	local H = { t = 0, probes = {}, integrity = {}, notes = {}, fallback = false, bad = 0 }
+	local H = { status = {}, integrity = {}, reinstalls = 0, fallback = false, runs = 0, t = 0 }
+	F.H = H
+	local lastHc = 0
+
+	local function setStatus(name, ok)
+		if ok == nil then return end
+		local s = H.status[name]
+		if not s then
+			s = { good = 0, bad = 0, miss = 0, state = "n/a" }
+			H.status[name] = s
+		end
+		if ok then
+			s.good = s.good + 1
+			s.miss = 0
+			s.state = "ok"
+		else
+			s.bad = s.bad + 1
+			s.miss = s.miss + 1
+			s.state = s.miss >= 2 and "failing" or "degraded"
+		end
+	end
 
 	local function probeEvent(form)
 		local p = X.probe
@@ -25,8 +45,14 @@ local okH, errH = xpcall(function()
 
 	local function probeLS()
 		local before = qt
-		local ok = pcall(loadstring, "return 41")
+		local ok = pcall(loadstring, "return 41 --aluz_hc")
 		return ok and qt > before
+	end
+
+	local h7 = F.h[7]
+	F.h[7] = function(e, now)
+		if type(e.src) == "string" and e.src:find("aluz_hc", 1, true) then return end
+		return h7(e, now)
 	end
 
 	local function inspect(f)
@@ -35,10 +61,6 @@ local okH, errH = xpcall(function()
 		if iscclosure then
 			local ok, v = pcall(iscclosure, f)
 			if ok then r.c = v end
-		end
-		if isexecutorclosure then
-			local ok, v = pcall(isexecutorclosure, f)
-			if ok then r.exec = v end
 		end
 		if debug and debug.info then
 			local ok, v = pcall(debug.info, f, "s")
@@ -61,37 +83,44 @@ local okH, errH = xpcall(function()
 		end)
 		add("loadstring", genv.loadstring)
 		add("request", genv.request)
-		add("setclipboard", genv.setclipboard)
 		pcall(function() add("HttpGet", game.HttpGet) end)
-		pcall(function()
-			local mt = getrawmetatable(game)
-			add("__namecall", rawget(mt, "__namecall"))
-		end)
 		return out
 	end
 
-	local function run()
-		if not alive then return end
+	local function check()
+		if not alive or busy then return end
+		H.runs = H.runs + 1
 		H.t = os.time()
-		H.notes = {}
-		H.probes = {}
-		if INST.nc and S.nc and MOD.nc then H.probes.namecall = probeEvent("nc") end
-		if INST.fn and S.nc and MOD.fn then H.probes.direct = probeEvent("fn") end
-		if INST.ls and MOD.ls then H.probes.loadstring = probeLS() end
+		if INST.nc and S.nc and MOD.nc then setStatus("namecall", probeEvent("nc")) end
+		if INST.fn and S.nc and MOD.fn then setStatus("direct", probeEvent("fn")) end
+		if INST.ls and MOD.ls then setStatus("loadstring", probeLS()) end
+		if INST.s2c and MOD.s2c and N.att > 0 then setStatus("s2c", true) end
 		H.integrity = integrity()
-		local bad = 0
-		for k, v in pairs(H.probes) do
-			if v == false then
-				bad = bad + 1
-				H.notes[#H.notes + 1] = k .. " hook not receiving calls"
+		local nc2 = H.status.namecall
+		if nc2 and nc2.state == "failing" and H.reinstalls < 3 then
+			H.reinstalls = H.reinstalls + 1
+			INST.nc = false
+			pcall(IN.nc)
+			nc2.miss = 0
+		end
+		local ls = H.status.loadstring
+		if ls and ls.state == "failing" and H.reinstalls < 3 then
+			H.reinstalls = H.reinstalls + 1
+			seenFn[genv.loadstring or loadstring] = nil
+			INST.ls = false
+			pcall(IN.ls)
+			ls.miss = 0
+		end
+		if X.tripped then
+			local now = clock()
+			for mod, t in pairs(X.tripped) do
+				if now - t > 60 then
+					faults[mod] = 0
+					if INST[mod] then MOD[mod] = true end
+					X.tripped[mod] = nil
+				end
 			end
 		end
-		for k, v in pairs(H.integrity) do
-			if v.exposed then H.notes[#H.notes + 1] = k .. " looks hooked to a game that inspects it" end
-		end
-		H.bad = bad
-		if F.notify then F.notify(bad == 0 and "Health OK" or ("Health: " .. bad .. " hook(s) failing")) end
-		return H
 	end
 
 	local baseNc = IN.nc
@@ -128,18 +157,46 @@ local okH, errH = xpcall(function()
 	IN.hc = function()
 		MOD.hc = true
 		INST.hc = true
-		task.delay(5, run)
+		task.delay(5, check)
 		return true
 	end
 	F.stage("hc", 90, IN.hc)
 
-	F.api.health = function()
-		local r = run()
-		warn("[AluzSpy] health: " .. tostring(F.enc(H)))
-		return r
+	F.onTick(function(now)
+		if now - lastHc >= 20 then
+			lastHc = now
+			task.defer(check)
+		end
+	end)
+
+	function F.weakHooks()
+		local out = {}
+		for k, s in pairs(H.status) do
+			if s.state == "degraded" or s.state == "failing" then out[#out + 1] = k .. " " .. s.state end
+		end
+		for k, v in pairs(H.integrity) do
+			if v.exposed then out[#out + 1] = k .. " looks hooked if the game inspects it" end
+		end
+		table.sort(out)
+		return out
 	end
-	F.extra.health = function() return H end
-	F.extraChips[#F.extraChips + 1] = { "HLTH", function() return false end, function() run() return false end }
+
+	function F.hookLine()
+		local t = {}
+		for k, s in pairs(H.status) do t[#t + 1] = k:sub(1, 3) .. ":" .. s.state:sub(1, 1) end
+		table.sort(t)
+		return #t > 0 and table.concat(t, " ") or "checking"
+	end
+
+	F.api = F.api or {}
+	F.api.health = function()
+		check()
+		warn("[AluzSpy] health: " .. tostring(F.enc({ status = H.status, reinstalls = H.reinstalls, fallback = H.fallback })))
+		return H
+	end
+	F.extra.health = function()
+		return { status = H.status, integrity = H.integrity, reinstalls = H.reinstalls, fallback = H.fallback, runs = H.runs }
+	end
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()
 end)
