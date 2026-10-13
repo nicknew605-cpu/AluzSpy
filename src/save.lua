@@ -1,11 +1,28 @@
 local okSV, errSV = xpcall(function()
-	PATH.session = PATH.f("Session_" .. game.PlaceId .. "_" .. os.date("%Y%m%d_%H%M%S") .. ".txt")
-	local INLINE_MAX = 30 * 1024 * 1024
+	D.store = D.store or {}
+	D.spilled = D.spilled or {}
+	D.diffs = D.diffs or {}
+	local stamp = os.date("%Y%m%d_%H%M%S")
+	PATH.session = PATH.f("Session_" .. game.PlaceId .. "_" .. stamp .. ".json")
+	PATH.dumpfile = PATH.f("Dump_" .. game.PlaceId .. "_" .. stamp .. ".lua")
+
 	local CATS = {
-		{ "loader", "1. LOADER CHAIN" }, { "ui", "2. UI LIBRARIES" }, { "feature", "3. FEATURE / PROTECTED SCRIPTS" },
-		{ "game", "4. GAME SCRIPTS" }, { "bytecode", "5. BYTECODE" }, { "payload", "6. ENCRYPTED / RAW PAYLOADS" },
-		{ "other", "7. OTHER" },
+		{ "loader", "LOADER CHAIN" }, { "ui", "UI LIBRARIES" }, { "feature", "FEATURE / PROTECTED SCRIPTS" },
+		{ "game", "GAME SCRIPTS" }, { "other", "OTHER" }, { "bytecode", "BYTECODE" },
+		{ "payload", "RAW / ENCRYPTED PAYLOADS" },
 	}
+	local RANK = {}
+	for i, c in ipairs(CATS) do RANK[c[1]] = i end
+
+	local function plain(x)
+		return (tostring(x):gsub("%c", " "))
+	end
+
+	local function murl(u)
+		if not u then return nil end
+		if F.maskUrl then return F.maskUrl(tostring(u)) end
+		return tostring(u)
+	end
 
 	local function collectRecs()
 		local out = {}
@@ -26,6 +43,7 @@ local okSV, errSV = xpcall(function()
 					d = st.dir, r = st.full, m = st.m, calls = st.n + st.supp, logged = st.logged,
 					merged = st.merged, sampled = st.smp, suppressed = st.supp, mutes = st.mutes,
 					peak = r2(st.peak), ret = st.ret or nil, muted = st.mu and true or nil,
+					schema = F.schemaStr and F.schemaStr(st.dir, st.full) or nil,
 				}
 			end
 		end
@@ -51,7 +69,7 @@ local okSV, errSV = xpcall(function()
 			hooks = {
 				nc = INST.nc, fn = INST.fn, s2c = INST.s2c, cb = INST.cb, ni = INST.ni, sys = INST.sys,
 				net = INST.net, http = INST.http, ls = INST.ls, rw = INST.rw, ws = INST.ws, req = INST.req,
-				hx = INST.hx, ac = INST.ac,
+				hx = INST.hx, ac = INST.ac, ps = INST.ps, tc = INST.tc,
 			},
 		}
 	end
@@ -68,6 +86,12 @@ local okSV, errSV = xpcall(function()
 		L[#L + 1] = "hooks: " .. (F.hookLine and F.hookLine() or "n/a")
 		if F.deep and F.deep.hits > 0 then L[#L + 1] = "deep dump triggered " .. F.deep.hits .. "x: " .. table.concat(F.deep.why, ", ") end
 		if X.recovered then L[#L + 1] = "previous session crashed at stage " .. tostring(X.recovered.stage) end
+		if F.alerts and #F.alerts > 0 then
+			L[#L + 1] = "ALERTS:"
+			for i = 1, math.min(#F.alerts, 10) do
+				L[#L + 1] = "  " .. F.alerts[i].reason .. " -> " .. tostring(F.alerts[i].url):sub(1, 90)
+			end
+		end
 		local miss = F.missing and F.missing() or {}
 		if #miss == 0 then
 			L[#L + 1] = "missing payload: none detected"
@@ -86,57 +110,34 @@ local okSV, errSV = xpcall(function()
 		return L
 	end
 
-	local function section(P, title)
-		P[#P + 1] = "\n==================== " .. title .. " ===================="
+	local function computeActions(recs)
+		local groups, cur, lastT = {}, {}, nil
+		for _, r in ipairs(recs) do
+			if r.d == "C2S" then
+				if lastT and r.t - lastT > 0.4 and #cur > 0 then
+					groups[#groups + 1] = cur
+					cur = {}
+				end
+				cur[#cur + 1] = tostring(r.r):match("([^%.]+)$") or tostring(r.r)
+				lastT = r.t
+			end
+		end
+		if #cur > 0 then groups[#groups + 1] = cur end
+		local counts = {}
+		for _, g in ipairs(groups) do
+			local seq = {}
+			for i = 1, math.min(#g, 4) do seq[i] = g[i] end
+			local key = table.concat(seq, " > ")
+			counts[key] = (counts[key] or 0) + 1
+		end
+		local arr = {}
+		for k, v in pairs(counts) do arr[#arr + 1] = { seq = k, n = v } end
+		table.sort(arr, function(a, b) return a.n > b.n end)
+		for i = #arr, 26, -1 do arr[i] = nil end
+		return arr
 	end
 
-	local function addEntry(P, e, st)
-		local h = { "----- [" .. tostring(e.id) .. "] " .. tostring(e.f), "tag=" .. tostring(e.tag), tostring(e.bytes) .. "b" }
-		if e.url then h[#h + 1] = "url=" .. tostring(e.url):sub(1, 140) end
-		if e.fp then h[#h + 1] = "obf=" .. e.fp.name .. "(" .. e.fp.conf .. "%)" end
-		if e.parent then h[#h + 1] = "parent=" .. tostring(e.parent) end
-		if e.pair then h[#h + 1] = "pair=" .. tostring(e.pair) end
-		if e.variantOf then h[#h + 1] = "variant-of=" .. tostring(e.variantOf) end
-		if e.seenBefore then h[#h + 1] = "seen-before(session " .. tostring(e.seenBefore) .. ")" end
-		if e.changed then h[#h + 1] = "CHANGED-vs-previous" end
-		if e.dup then
-			P[#P + 1] = table.concat(h, " | ") .. " | duplicate of " .. tostring(e.dup)
-			return
-		end
-		P[#P + 1] = table.concat(h, " | ") .. " -----"
-		local body = e.f and D.store[e.f] or nil
-		if body and not CFG.split and st.used + #body <= INLINE_MAX then
-			st.used = st.used + #body
-			if F.isBin and F.isBin(body) then
-				P[#P + 1] = "[binary, base64]"
-				P[#P + 1] = F.b64enc and F.b64enc(body) or "(encode failed)"
-			else
-				P[#P + 1] = body
-			end
-			local base = e.f:gsub("%.lua$", "")
-			local dec = D.store[base .. ".dec.lua"]
-			if dec and st.used + #dec <= INLINE_MAX then
-				st.used = st.used + #dec
-				P[#P + 1] = "----- decoded view -----"
-				P[#P + 1] = dec
-			end
-			local sb = D.store[base .. ".sandbox.txt"]
-			if sb and st.used + #sb <= INLINE_MAX then
-				st.used = st.used + #sb
-				P[#P + 1] = "----- sandbox report -----"
-				P[#P + 1] = sb
-			end
-		elseif D.spilled[e.f or ""] or CFG.split then
-			P[#P + 1] = "(stored separately: " .. PATH.d(e.f or "?") .. ")"
-		elseif body then
-			P[#P + 1] = "(omitted: size cap)"
-		else
-			P[#P + 1] = "(content not available)"
-		end
-		P[#P + 1] = "----- end [" .. tostring(e.id) .. "] -----"
-	end
-
-	local function importantRemotes(P, recs)
+	local function importantRemotes(recs)
 		local by = {}
 		for _, r in ipairs(recs) do
 			if r.d == "C2S" or r.d == "S2C" then
@@ -145,11 +146,7 @@ local okSV, errSV = xpcall(function()
 					l = {}
 					by[r.r] = l
 				end
-				if #l < 3 then
-					l[#l + 1] = r
-				else
-					l[4] = r
-				end
+				if #l < 3 then l[#l + 1] = { t = r.t, n = r.n, a = r.a, code = r.code } end
 			end
 		end
 		local arr = {}
@@ -158,29 +155,32 @@ local okSV, errSV = xpcall(function()
 				if st.logged > 0 and by[st.full] then
 					local score = (st.ret and 5 or 0) + math.min(st.logged, 20) / 4 + (st.mutes == 0 and 2 or -2)
 						+ (st.nshapeSeen and st.nshapeSeen >= 2 and 1 or 0) + (st.dir == "C2S" and 1 or 0)
-					arr[#arr + 1] = { st = st, score = score }
+					arr[#arr + 1] = {
+						score = score, r = st.full, d = st.dir, calls = st.n + st.supp, peak = r2(st.peak),
+						ret = st.ret or nil, spam = st.mutes > 0 or nil, samples = by[st.full],
+					}
 				end
 			end
 		end
 		table.sort(arr, function(a, b) return a.score > b.score end)
-		for i = 1, math.min(#arr, 25) do
-			local st = arr[i].st
-			P[#P + 1] = string.format("[%s] %s calls=%d peak=%s/s%s%s", st.dir, st.full, st.n + st.supp, tostring(r2(st.peak)),
-				st.ret and " returns" or "", st.mutes > 0 and " SPAM" or "")
-			for _, r in ipairs(by[st.full]) do
-				P[#P + 1] = string.format("   t=%s x%d (%s)%s", tostring(r.t), r.n, table.concat(r.a or {}, ", "), r.code and ("  " .. r.code) or "")
-			end
-		end
-		local spam = F.spamList and F.spamList() or {}
-		if #spam > 0 then
-			P[#P + 1] = "spam classes (muted):"
-			for i = 1, math.min(#spam, 15) do
-				P[#P + 1] = string.format("   %s %s %s peak=%s/s suppressed=%d", spam[i].d, spam[i].r, spam[i].kind, tostring(spam[i].peak), spam[i].suppressed)
-			end
-		end
+		for i = #arr, 26, -1 do arr[i] = nil end
+		return arr
 	end
 
-	local function buildSession(reason)
+	local function dumpIndex()
+		local out = {}
+		for i = 1, math.min(#D.list, 400) do
+			local e = D.list[i]
+			out[#out + 1] = {
+				id = e.id, f = e.f, cat = e.cat, tag = e.tag, bytes = e.bytes, url = murl(e.url),
+				obf = e.fp and e.fp.name or nil, conf = e.fp and e.fp.conf or nil, parent = e.parent, pair = e.pair,
+				variant_of = e.variantOf, seen_before = e.seenBefore, changed = e.changed, dup = e.dup,
+			}
+		end
+		return out
+	end
+
+	local function buildJSON(reason)
 		local recs = collectRecs()
 		local exec = "unknown"
 		pcall(function()
@@ -190,54 +190,112 @@ local okSV, errSV = xpcall(function()
 			end
 		end)
 		local meta = {
-			tool = "Aluz Spy", version = VERSION, executor = exec, place = game.PlaceId, job = game.JobId,
+			tool = "Aluz Spy", version = VERSION, schema = 5, executor = exec, place = game.PlaceId, job = game.JobId,
 			exported = os.date("%Y-%m-%d %H:%M:%S"), reason = reason, session_file = PATH.session,
-			uptime = r2(clock() - T0), safe_boot = BAN.safe, banned = BAN.list, recovered = X.recovered,
-			capabilities = CAP, stats = F.stats(), categories = F.catSummary and F.catSummary() or nil,
-			missing = F.missing and F.missing() or nil, health = F.extra.health and F.extra.health() or nil,
-			ext = F.ext and F.ext() or nil, last_errors = errMap, split = CFG.split,
+			dump_file = (D.n > 0) and PATH.dumpfile or nil, uptime = r2(clock() - T0), safe_boot = BAN.safe,
+			banned = BAN.list, recovered = X.recovered, capabilities = CAP, stats = F.stats(),
+			categories = F.catSummary and F.catSummary() or nil, health = F.extra.health and F.extra.health() or nil,
+			ext = F.ext and F.ext() or nil, last_errors = errMap,
 		}
-		local P = {}
-		P[#P + 1] = string.format("ALUZSPY SESSION  v%s  reason=%s  %s  place=%s  executor=%s", VERSION, tostring(reason), os.date("%Y-%m-%d %H:%M:%S"), tostring(game.PlaceId), exec)
-		section(P, "SUMMARY")
-		for _, l in ipairs(F.summaryLines()) do P[#P + 1] = l end
-		section(P, "STAGE TRACKING (loading chain)")
-		for _, l in ipairs(F.chainText and F.chainText() or {}) do P[#P + 1] = l end
-		local st = { used = 0 }
-		for _, c in ipairs(CATS) do
-			local list = {}
-			for _, e in ipairs(D.list) do
-				if (e.cat or "other") == c[1] then list[#list + 1] = e end
+		local chain = F.chainText and F.chainText() or {}
+		for i = #chain, 201, -1 do chain[i] = nil end
+		for i = 1, #chain do chain[i] = murl(chain[i]) end
+		local head = '{"schema":5,"meta":' .. (F.enc(meta) or "{}")
+			.. ',"summary":' .. (F.enc(F.summaryLines()) or "[]")
+			.. ',"alerts":' .. (F.enc(F.alerts or {}) or "[]")
+			.. ',"missing":' .. (F.enc(F.missing and F.missing() or {}) or "[]")
+			.. ',"chain":' .. (F.enc(chain) or "[]")
+			.. ',"dumps":' .. (F.enc(dumpIndex()) or "[]")
+			.. ',"changes":' .. (F.enc(D.diffs) or "[]")
+			.. ',"actions":' .. (F.enc(computeActions(recs)) or "[]")
+			.. ',"important":' .. (F.enc(importantRemotes(recs)) or "[]")
+			.. ',"spam":' .. (F.enc(F.spamList and F.spamList() or {}) or "[]")
+			.. ',"remotes":' .. (F.enc(remList()) or "[]") .. ',"logs":['
+		local lines = {}
+		for i = 1, #recs do
+			local js = F.enc(recOut(recs[i]))
+			if js then lines[#lines + 1] = js end
+		end
+		return head .. "\n" .. table.concat(lines, ",\n") .. "\n]}"
+	end
+
+	local function writeDump()
+		local entries = {}
+		for _, e in ipairs(D.list) do
+			if not e.dup and e.f and (D.store[e.f] or D.spilled[e.f]) then entries[#entries + 1] = e end
+		end
+		if #entries == 0 then return false end
+		table.sort(entries, function(a, b)
+			local ra, rb = RANK[a.cat or "other"] or 5, RANK[b.cat or "other"] or 5
+			if ra ~= rb then return ra < rb end
+			return (tonumber(a.id) or 0) < (tonumber(b.id) or 0)
+		end)
+		local exec = "unknown"
+		pcall(function()
+			if identifyexecutor then exec = tostring((identifyexecutor())) end
+		end)
+		local useAppend = type(appendfile) == "function"
+		local chunks, size, first, okAll = {}, 0, true, true
+		local function flush()
+			if #chunks == 0 then return end
+			local data = table.concat(chunks, "\n") .. "\n"
+			chunks, size = {}, 0
+			if first then
+				first = false
+				if not pcall(writefile, PATH.dumpfile, data) then okAll = false end
+			elseif not pcall(appendfile, PATH.dumpfile, data) then
+				okAll = false
 			end
-			if #list > 0 then
-				section(P, c[2] .. " (" .. #list .. ")")
-				for _, e in ipairs(list) do addEntry(P, e, st) end
+		end
+		local function push(s)
+			chunks[#chunks + 1] = s
+			size = size + #s
+			if useAppend and size >= 262144 then flush() end
+		end
+		push(string.format("-- AluzSpy dump | place %s | %s | %d scripts | %s", tostring(game.PlaceId), os.date("%Y-%m-%d %H:%M:%S"), #entries, exec))
+		push("-- sources only. Not a runnable file: every script starts at its '-- =====' line.")
+		push("-- index:")
+		for _, e in ipairs(entries) do
+			push(string.format("--   [%s] %s | %s | %db | %s%s", tostring(e.id), e.cat or "other", plain(e.tag), e.bytes or 0,
+				e.fp and (e.fp.name .. " ") or "", e.url and plain(murl(e.url)):sub(1, 110) or ""))
+		end
+		local chain = F.chainText and F.chainText() or {}
+		if #chain > 0 then
+			push("-- loading chain:")
+			for i = 1, math.min(#chain, 50) do push("--   " .. plain(murl(chain[i]))) end
+		end
+		for _, e in ipairs(entries) do
+			local body = D.store[e.f]
+			if not body and D.spilled[e.f] then body = FS.read(PATH.d(e.f)) end
+			local h = { string.format("-- ===== [%s] %s | %s | %db", tostring(e.id), e.cat or "other", plain(e.tag), e.bytes or 0) }
+			if e.url then h[#h + 1] = "url=" .. plain(murl(e.url)):sub(1, 140) end
+			if e.fp then h[#h + 1] = "obf=" .. e.fp.name .. "(" .. e.fp.conf .. "%)" end
+			if e.parent then h[#h + 1] = "parent=" .. tostring(e.parent) end
+			if e.pair then h[#h + 1] = "pair=" .. tostring(e.pair) end
+			if e.variantOf then h[#h + 1] = "variant-of=" .. tostring(e.variantOf) end
+			if e.changed then h[#h + 1] = "CHANGED" end
+			push(table.concat(h, " | ") .. " =====")
+			if not body then
+				push("-- (content unavailable)")
+			elseif (F.isBin and F.isBin(body)) or e.cat == "bytecode" then
+				if #body <= 262144 and F.b64enc then
+					push("--[==[BASE64")
+					push(F.b64enc(body))
+					push("]==]")
+				else
+					push("-- (binary " .. #body .. "b omitted)")
+				end
+			else
+				push(body)
 			end
 		end
-		section(P, "8. IMPORTANT REMOTES")
-		importantRemotes(P, recs)
-		local diffs = {}
-		for name in pairs(D.store) do
-			if name:find("%.diff%.txt$") then diffs[#diffs + 1] = name end
+		if useAppend then
+			flush()
+		else
+			local ok = pcall(writefile, PATH.dumpfile, table.concat(chunks, "\n") .. "\n")
+			okAll = ok
 		end
-		table.sort(diffs)
-		if #diffs > 0 then
-			section(P, "9. CHANGES / DIFFS")
-			for _, name in ipairs(diffs) do
-				P[#P + 1] = "----- " .. name .. " -----"
-				P[#P + 1] = D.store[name]
-			end
-		end
-		section(P, "APPENDIX: META (json)")
-		P[#P + 1] = F.enc(meta) or "{}"
-		section(P, "APPENDIX: REMOTES (json)")
-		P[#P + 1] = F.enc(remList()) or "[]"
-		section(P, "APPENDIX: LOGS (json lines)")
-		for _, r in ipairs(recs) do
-			local js = F.enc(recOut(r))
-			if js then P[#P + 1] = js end
-		end
-		return table.concat(P, "\n")
+		return okAll
 	end
 
 	saveNow = function(reason)
@@ -253,11 +311,19 @@ local okSV, errSV = xpcall(function()
 		local ok, res = pcall(function()
 			F.process(0.05)
 			D.flush()
-			if not manual and not X.dirty then return "clean" end
-			local body = buildSession(reason)
+			local wrote = false
+			if (manual or D.dirtyDump) and D.n > 0 then
+				wrote = writeDump()
+				if wrote then
+					D.dirtyDump = false
+					if F.spoolReset then F.spoolReset() end
+				end
+			end
+			if not manual and not X.dirty and not wrote then return "clean" end
+			local body = buildJSON(reason)
 			writefile(PATH.session, body)
-			if manual and type(setclipboard) == "function" and #body < 300000 then pcall(setclipboard, body) end
-			if F.spoolReset then F.spoolReset() end
+			if manual and type(setclipboard) == "function" and #body < 1500000 then pcall(setclipboard, body) end
+			if wrote and manual and F.notify then F.notify("Dump: " .. (PATH.dumpfile:match("[^/]+$") or "ok")) end
 			X.dirty = false
 			X.reason = reason
 			return PATH.session
