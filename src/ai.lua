@@ -58,7 +58,8 @@ do
 
 	local function emit(st, e, strs, n, key, now, mode, samp)
 		local rec = st.rec
-		if (mode == "merge" or mode == "sample") and rec and rec.live and rec.sg == key and now - rec.t0 < WIN then
+		-- VIP FIX: Thêm mode "smp" vào logic merge để tránh tràn log
+		if (mode == "merge" or mode == "sample" or mode == "smp") and rec and rec.live and rec.sg == key and now - rec.t0 < WIN then
 			rec.n = rec.n + 1
 			rec.tl = r2(now - T0)
 			st.merged = st.merged + 1
@@ -66,7 +67,7 @@ do
 			X.dirty = true
 			return
 		end
-		if mode == "sample" then
+		if mode == "sample" or mode == "smp" then
 			st.sc = st.sc + 1
 			if st.sc % samp ~= 0 then
 				N.sampled = N.sampled + 1
@@ -142,7 +143,11 @@ do
 		end
 		local strs, n = packStr(e.a, 4)
 		local sig = n .. "\31" .. table.concat(strs, "\31", 1, math.min(#strs, 3))
+		
+		-- VIP UPGRADE: Advanced Adaptive Shape Analysis
 		local shape = (sig:gsub("%-?%d+%.?%d*", "#"))
+		shape = shape:gsub('"[^"]*"', '"STR"') -- Bỏ qua random string để bắt cấu trúc table
+		
 		if sig == st.ls then
 			st.rep = st.rep + 1
 		else
@@ -158,19 +163,32 @@ do
 			st.nshape = st.nshape + 1
 		end
 		local isNew, newShape = false, false
-		if not st.seen[sig] and st.nseen < 24 then
+		
+		-- VIP UPGRADE: Smart Cache AI (Xóa bỏ limit 24, dùng cache thông minh)
+		if not st.seen[sig] then
 			st.seen[sig] = true
 			st.nseen = st.nseen + 1
 			isNew = true
+			if st.nseen > 500 then st.seen = {}; st.nseen = 0 end
 		end
-		if not st.shapeSeen[shape] and st.nshapeSeen < 24 then
+		if not st.shapeSeen[shape] then
 			st.shapeSeen[shape] = true
 			st.nshapeSeen = st.nshapeSeen + 1
 			newShape = true
+			if st.nshapeSeen > 500 then st.shapeSeen = {}; st.nshapeSeen = 0 end
 		end
+		
 		local L = X.load
 		if st.mu then
-			emit(st, e, strs, n, sig, now, "smp", 1)
+			-- VIP UPGRADE: Fix mu.c counter bug triệt để
+			st.mu.c = st.mu.c + 1
+			if st.mu.c % st.mu.every == 1 then
+				emit(st, e, strs, n, sig, now, "smp", 1)
+			else
+				N.supp = N.supp + 1
+				st.mu.st.supp = st.mu.st.supp + 1
+				st.mu.sup = st.mu.sup + 1
+			end
 			e.a = nil
 			return
 		end
@@ -268,13 +286,6 @@ do
 			local c = mu.c
 			local dc = c - mu.lc
 			mu.lc = c
-			local pushedNow = floor(c / mu.every) - floor((c - dc) / mu.every)
-			local sk = dc - pushedNow
-			if sk < 0 then sk = 0 end
-			N.total = N.total + sk
-			N.supp = N.supp + sk
-			mu.st.supp = mu.st.supp + sk
-			mu.sup = mu.sup + sk
 			local rate = dc / dt
 			if rate > mu.peak then mu.peak = rate end
 			if now >= mu.exp then
