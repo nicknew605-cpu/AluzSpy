@@ -1,10 +1,12 @@
 local okD2, errD2 = xpcall(function()
-	if not F.job then return end
 	F.api = F.api or {}
+	CFG.decode = false
+	CFG.sandbox = false
 
 	local STORE_MAX = 24 * 1024 * 1024
 	local byte = string.byte
 	D.store, D.spilled, D.storeBytes = {}, {}, 0
+	D.diffs, D.diffN, D.dirtyDump = {}, 0, false
 	PATH.spool = PATH.f(".spool")
 
 	local function fastKey(src)
@@ -143,18 +145,12 @@ local okD2, errD2 = xpcall(function()
 		end
 	end)
 
-	local function emitFile(name, text)
-		D.pending = D.pending + #text
-		D.t = D.t + 1
-		D.q[D.t] = { f = name, s = text }
-	end
-
 	local function splitLines(s)
 		local t, n = {}, 0
 		for line in (s .. "\n"):gmatch("([^\n]*)\n") do
 			n = n + 1
 			t[n] = line
-			if n % 400 == 0 then F.Y() end
+			if n % 400 == 0 and F.Y then F.Y() end
 		end
 		return t
 	end
@@ -174,8 +170,8 @@ local okD2, errD2 = xpcall(function()
 			table.sort(add)
 			table.sort(rem)
 			out[#out + 1] = string.format("%s: +%d -%d", kind, #add, #rem)
-			for i = 1, math.min(#add, 25) do out[#out + 1] = "  + " .. add[i] end
-			for i = 1, math.min(#rem, 25) do out[#out + 1] = "  - " .. rem[i] end
+			for i = 1, math.min(#add, 20) do out[#out + 1] = "  + " .. add[i] end
+			for i = 1, math.min(#rem, 20) do out[#out + 1] = "  - " .. rem[i] end
 		end
 		cmp("functions", sa.fn, sb.fn)
 		cmp("names/urls", sa.nm, sb.nm)
@@ -183,7 +179,7 @@ local okD2, errD2 = xpcall(function()
 	end
 
 	local function queueDiff(oldSrc, ent, newSrc, url)
-		if #oldSrc > 400000 or #newSrc > 400000 then return end
+		if not F.job or #oldSrc > 400000 or #newSrc > 400000 then return end
 		F.job("diff", function()
 			local a, b = splitLines(oldSrc), splitLines(newSrc)
 			local ca, cb = {}, {}
@@ -202,7 +198,7 @@ local okD2, errD2 = xpcall(function()
 					ra[l] = av - 1
 				else
 					nr = nr + 1
-					if nr <= 200 then rem[#rem + 1] = string.format("%5d: %s", i, l:sub(1, 160)) end
+					if nr <= 60 then rem[#rem + 1] = string.format("%5d: %s", i, l:sub(1, 140)) end
 				end
 				if i % 500 == 0 then F.Y() end
 			end
@@ -213,15 +209,11 @@ local okD2, errD2 = xpcall(function()
 					rb[l] = av - 1
 				else
 					na = na + 1
-					if na <= 200 then add[#add + 1] = string.format("%5d: %s", i, l:sub(1, 160)) end
+					if na <= 60 then add[#add + 1] = string.format("%5d: %s", i, l:sub(1, 140)) end
 				end
 				if i % 500 == 0 then F.Y() end
 			end
-			local out = {
-				"script diff",
-				"url: " .. tostring(url),
-				string.format("old %d lines, new %d lines, removed %d, added %d", #a, #b, nr, na),
-			}
+			local out = { string.format("old %d lines, new %d lines, removed %d, added %d", #a, #b, nr, na) }
 			local sd = structDelta(oldSrc, newSrc)
 			if sd then out[#out + 1] = sd end
 			out[#out + 1] = "--- removed"
@@ -231,7 +223,10 @@ local okD2, errD2 = xpcall(function()
 			return table.concat(out, "\n")
 		end, function(text)
 			if type(text) ~= "string" then return end
-			emitFile((ent.f or "x"):gsub("%.lua$", "") .. ".diff.txt", text)
+			if D.diffN < 20 then
+				D.diffN = D.diffN + 1
+				D.diffs[#D.diffs + 1] = { id = ent.id, f = ent.f, url = url, text = text:sub(1, 5000) }
+			end
 			IDX.diffs = IDX.diffs + 1
 			X.dirty = true
 		end)
@@ -303,47 +298,69 @@ local okD2, errD2 = xpcall(function()
 	if HAS_W and FS.exists(PATH.spool) then
 		local data = FS.read(PATH.spool)
 		if type(data) == "string" and #data > 40 then
-			local name = PATH.f("Recovered_" .. os.date("%Y%m%d_%H%M%S") .. ".txt")
-			if FS.write(name, "AluzSpy recovered dumps (items added after the last save of a crashed session)\n" .. data) then
-				F.recoveredFile = name
+			local out, n, pos = { "-- AluzSpy recovered dumps from a crashed session. Not runnable: scripts are separated by '-- =====' lines." }, 0, 1
+			while true do
+				local s, e, f, len, kind = data:find("\n##ALUZ%-DUMP|([^|\n]+)|(%d+)|(%w+)\n", pos)
+				if not s then break end
+				len = tonumber(len)
+				local body = data:sub(e + 1, e + len)
+				n = n + 1
+				out[#out + 1] = "-- ===== recovered " .. f .. " | " .. len .. "b | " .. kind .. " ====="
+				if kind == "b64" then
+					out[#out + 1] = "--[==[BASE64\n" .. body .. "\n]==]"
+				else
+					out[#out + 1] = body
+				end
+				pos = e + len + 1
+			end
+			if n > 0 then
+				local name = PATH.f("Recovered_" .. os.date("%Y%m%d_%H%M%S") .. ".lua")
+				if FS.write(name, table.concat(out, "\n")) then F.recoveredFile = name end
 			end
 		end
 		FS.del(PATH.spool)
 	end
 
-	local baseWrite = D.writeOne
 	D.writeOne = function()
-		if CFG.split then return baseWrite() end
 		if D.h > D.t then return false end
 		local it = D.q[D.h]
 		D.q[D.h] = nil
 		D.h = D.h + 1
-		local n = #it.s
+		local f, n = it.f, #it.s
 		D.pending = D.pending - n
+		if f:find("%.dec%.lua$") or f:find("%.diff%.txt$") or f:find("%.sandbox%.txt$") or f:find("%.report%.txt$") then
+			return true
+		end
 		if D.storeBytes + n <= STORE_MAX then
-			D.store[it.f] = it.s
+			D.store[f] = it.s
 			D.storeBytes = D.storeBytes + n
-			spoolAppend(it.f, it.s)
-		elseif pcall(writefile, PATH.d(it.f), it.s) then
-			D.spilled[it.f] = n
+			spoolAppend(f, it.s)
+		elseif pcall(writefile, PATH.d(f), it.s) then
+			D.spilled[f] = n
 		else
 			D.fail = D.fail + 1
 		end
+		D.dirtyDump = true
 		X.dirty = true
 		return true
 	end
 
-	F.api.split = function(b)
-		CFG.split = b ~= false
-		F.cfgSave()
-		return CFG.split
+	local baseRead = FS.read
+	local pfx = PATH.ok and (PATH.dumpDir .. "/") or "AluzDump_"
+	FS.read = function(name)
+		local v = baseRead(name)
+		if v ~= nil then return v end
+		if type(name) == "string" and name:sub(1, #pfx) == pfx then return D.store[name:sub(#pfx + 1)] end
+		return nil
 	end
+
+	F.api.split = function() return false end
 	F.api.saveIndex = saveIndex
 
 	F.extra.dump2 = function()
 		return {
 			hash = HASHFN ~= nil, store_mb = floor(D.storeBytes / 1048576), spilled = next(D.spilled) ~= nil,
-			seen_before = IDX.seen, variants = IDX.vars, diffs = IDX.diffs, split = CFG.split,
+			seen_before = IDX.seen, variants = IDX.vars, diffs = IDX.diffs,
 		}
 	end
 end, function(e)
