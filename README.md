@@ -33,7 +33,7 @@ It works well on Delta X, otherwise I don't know 😏
 
    # Discord server
 
-   Go in to get crack scripts, VIP scripts, leaked src files, etc.
+   Go in to get other advanced scripts  etc.
 
    https://discord.gg/5U4xD7qB6
 
