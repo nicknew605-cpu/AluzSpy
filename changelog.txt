@@ -1,6 +1,6 @@
 Although it's a bit late, I've created it 😓
 
-Change log from 1.2 Max (1.2.1 Beta) to 1.2.1 Stable:
+Change log 1.2.1 Stable (Ultimate Update):
 
 Menu: now simplified to just [ - ] [counter] [SAVE]; more compact than the previous version.
 
@@ -30,13 +30,26 @@ Smart deduplication: recognizes versions differing only by key or HWID. Detects 
 
 Hybrid dump: for scripts invoking remote calls, both source code and bytecode are saved and linked together.
 
-Improved obfuscator identification with detailed reasoning. Risk factors clearly explained: heavy VM usage, anti-tamper mechanisms, constant encryption, control-flow obfuscation, etc. Continuous hook health monitoring: test each hook every 20 seconds, auto-reinstall, and auto-reactivate temporarily interrupted hooks. The actor hook automatically detects duplicate logs and stops further injection.
+Improved obfuscator identification with detailed reasoning. Risk factors clearly explained: heavy VM usage, anti-tamper mechanisms, constant encryption, control-flow obfuscation, etc.
+
+Continuous hook health monitoring: test each hook every 20 seconds, auto-reinstall, and auto-reactivate temporarily interrupted hooks. The actor hook automatically detects duplicate logs and stops further injection.
+
+New in this update:
+
+AI engine fixed: the mute counter now works correctly, so spam remotes are truly suppressed instead of flooding the log buffer. The AI no longer goes "blind" after seeing many unique payloads, thanks to the new smart cache system.
+
+Anti-bypass remote hook: added direct closure hooks for `FireServer` and `InvokeServer`. Now captures remote calls even when scripts or anti-cheats avoid the `:` syntax and call `Remote.FireServer(Remote, ...)` directly.
+
+Safer hook health check: the old probe method could be detected or cleaned by some executors/anti-cheats, causing false "failing" states. Health checks now inspect the metatable closure directly, making auto-reinstall far more reliable.
+
+Deep scan upgraded: during deep-scan mode, dynamically decoded strings (from VM-style obfuscators) are monitored, so URLs and payloads revealed at runtime can be captured even when the source itself is virtualized.
+
+Dump indexing strengthened: improved hashing reduces false "seen before" and "variant" matches on large or heavily obfuscated scripts.
+
 Loading order (src/): core, core2, dump, decode, dump2, hooks, hooks2, deep, health, actor, ai, chain, analysis, hybrid, save, ui, runtime.
 
-Retain: dump, decode, hooks, hooks2, ai.
-Move core2 and analysis from beta/ to src/ if applicable.
-Replace: dump2, health, actor, save, ui, runtime, loader.
-Create new: deep, chain, hybrid.
+Retain: dump, decode, hooks, ai, chain, analysis, hybrid, save, ui, runtime.
+Updated in this build: hooks2, health, deep, dump2.
 
 Got a bug? Send an email to nicknew605@gmail.com or join my newest Discord server 😶‍🌫️ 
 
