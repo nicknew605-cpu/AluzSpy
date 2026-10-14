@@ -10,13 +10,13 @@ local okD2, errD2 = xpcall(function()
 	PATH.spool = PATH.f(".spool")
 
 	local function fastKey(src)
-		local n, h = #src, #src
-		for i = 1, math.min(n, 512) do h = (h * 31 + byte(src, i)) % 2147483647 end
-		if n > 1024 then
-			local m = floor(n / 2)
-			for i = m, math.min(n, m + 255) do h = (h * 31 + byte(src, i)) % 2147483647 end
+		local n = #src
+		local h = 5381
+		local step = 1
+		if n > 4096 then step = floor(n / 2048) end
+		for i = 1, n, step do
+			h = ((h * 33) + byte(src, i)) % 4294967291
 		end
-		for i = math.max(1, n - 255), n do h = (h * 31 + byte(src, i)) % 2147483647 end
 		return "f" .. h .. ":" .. n
 	end
 
