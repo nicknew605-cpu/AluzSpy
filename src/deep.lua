@@ -162,6 +162,19 @@ local okDP, errDP = xpcall(function()
 		return h4(e, now)
 	end
 
+	if type(hookfunction) == "function" then
+		local oldChar = string.char
+		pcall(hookfunction, string.char, nc(function(...)
+			local s = oldChar(...)
+			if #s > 0 and MOD.ls and F.deepActive and F.deepActive() then
+				if s:find("http", 1, true) or s:find("discord", 1, true) or s:find("api", 1, true) then
+					pcall(F.capSrc, "vm_decrypt_url", s, X.chunk, nil, nil)
+				end
+			end
+			return s
+		end))
+	end
+
 	F.extra.deep = function()
 		return { hits = DP.hits, reasons = DP.why, active = F.deepActive() }
 	end
