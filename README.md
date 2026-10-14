@@ -5,24 +5,29 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/nicknew605-cpu/AluzSp
 ```
 It works well on Delta X, otherwise I don't know 😏
 
-# Script features:
+# ✨ Top 10 VIP Features
 
-**Top 5 VIP Features – AluzSpy 1.2.1 Stable**
+> **AluzSpy — 1.2.1 Stable**
 
-1. **Single File Dump**  
-   Everything is saved into one clean `Session_*.txt` file instead of 30-40 separate files.
+| # | Feature | Description |
+|:-:|:--------|:------------|
+| 🥇 | **Auto Dump Engine** | Dumps all scripts & bytecode automatically, zero manual work. |
+| 🥈 | **Anti-Bypass Hook** | Captures `FireServer` / `InvokeServer` even via direct dot-syntax calls. |
+| 🥉 | **Smart AI Engine** | Detects spam remotes and auto-mutes them intelligently. |
+| 4️⃣ | **Obfuscator Detector** | Identifies Luarmor, Luraph, MoonSec, IronBrew, Prometheus, etc. |
+| 5️⃣ | **Deep Dump Mode** | Catches encrypted payloads decrypted at runtime. |
+| 6️⃣ | **Chain Tracker** | Visualizes full load chain: loader → HttpGet → loadstring → … |
+| 7️⃣ | **Smart Diff** | Detects URL / script_id changes and generates structural diffs. |
+| 8️⃣ | **Crash Recovery** | Auto-recovers dumps from `.spool` after a crash. |
+| 9️⃣ | **Hook Health Monitor** | Checks hooks every 20s, auto-reinstalls if broken. |
+| 🔟 | **Single Session Save** | Everything saved into one clean session file. |
 
-2. **Deep Dump Mode**  
-   Automatically detects Luarmor, Luraph, MoonSec, IronBrew and more, then runs a deeper 60-second scan.
+---
 
-3. **Stage Tracking**  
-   Shows the full loading chain (loader → HttpGet → loadstring…) and clearly marks what was captured and what’s missing.
+<p align="center">
+  <sub>Got a bug? 📧 nicknew605@gmail.com · 💬 <a href="https://discord.gg/5U4xD7qB6">Discord</a></sub>
+</p>
 
-4. **Missing Payload Alerts**  
-   Warns you when only the UI was dumped or when the real feature code is still missing, and gives simple next-step advice.
-
-5. **Auto Hook Health**  
-   Continuously checks hooks every 20 seconds and automatically reinstalls them if they break or get detected.
 
    This script is for EDUCATIONAL, LEARNING, AND ENTERTAINMENT purposes only
 
