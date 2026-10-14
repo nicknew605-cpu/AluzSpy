@@ -24,23 +24,14 @@ local okH, errH = xpcall(function()
 	end
 
 	local function probeEvent(form)
-		local p = X.probe
-		if not p then
-			local ok, inst = pcall(Instance.new, "RemoteEvent")
-			if not ok then return nil end
-			p = inst
-			X.probe = p
-		end
-		X.probeSelf = p
-		X.probeHit = false
-		if form == "nc" then
-			pcall(function() p:FireServer("aluz_hc") end)
-		else
-			pcall(function() p.FireServer(p, "aluz_hc") end)
-		end
-		local hit = X.probeHit
-		X.probeSelf = nil
-		return hit
+		if not getrawmetatable then return true end
+		local ok, mt = pcall(getrawmetatable, game)
+		if not ok or not mt then return true end
+		local ncHook = rawget(mt, "__namecall")
+		if not ncHook then return false end
+		local isC = false
+		if iscclosure then pcall(function() isC = iscclosure(ncHook) end) end
+		return isC == false
 	end
 
 	local function probeLS()
