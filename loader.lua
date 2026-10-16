@@ -8,7 +8,7 @@ local DISABLED = type(ENV.AluzSpyDisable) == "table" and ENV.AluzSpyDisable or {
 local ORDER = {
 	{ "core", true }, { "core2", false }, { "dump", true }, { "decode", false }, { "dump2", false },
 	{ "deobfuscate", false }, { "hooks", true }, { "hooks2", false }, { "deep", false },
-	{ "health", false }, { "actor", false }, { "ai", true }, { "chain", false }, { "watch", false },
+	{ "health", false }, { "actor", false }, { "ai", true }, { "chain", false },
 	{ "analysis", false }, { "reverse", false }, { "hybrid", false }, { "vip", false },
 	{ "save", true }, { "ui", true }, { "runtime", true },
 }
@@ -58,18 +58,23 @@ for _, m in ipairs(ORDER) do
 	end
 end
 
-local stamp, pending = tostring(os.time()), #mods
-for i = 1, #mods do
+local stamp, pending, nextIdx = tostring(os.time()), #mods, 0
+for _ = 1, math.min(6, #mods) do
 	task.spawn(function()
-		for _ = 1, 2 do
-			local ok, body = pcall(function() return game:HttpGet(mods[i].url .. "?v=" .. stamp, true) end)
-			if ok and type(body) == "string" and #body > 20 then
-				mods[i].src = body
-				break
+		while true do
+			nextIdx = nextIdx + 1
+			local m = mods[nextIdx]
+			if not m then return end
+			for _ = 1, 2 do
+				local ok, body = pcall(function() return game:HttpGet(m.url .. "?v=" .. stamp, true) end)
+				if ok and type(body) == "string" and #body > 20 then
+					m.src = body
+					break
+				end
+				task.wait(0.4)
 			end
-			task.wait(0.4)
+			pending = pending - 1
 		end
-		pending = pending - 1
 	end)
 end
 

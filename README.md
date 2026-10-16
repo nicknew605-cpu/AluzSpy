@@ -82,7 +82,6 @@ getgenv().AluzSpyDisable = { vip = true }
 - Reverse links are evidence, not proof: a matching constant does not guarantee that a closure sends the remote.
 - Many features depend on what your executor provides (`getconstants`, `getupvalues`, `getscriptclosure`, `decompile`, hooks).
 - Under heavy load the event queue can drop events instead of freezing the game; the drop counter is shown in the report.
-- `ps` (property watcher) and `tc` (chat) hooks are off by default. Enable them with `AluzSpy.mod("ps", true)`.
 
     This script is for EDUCATIONAL, LEARNING, AND ENTERTAINMENT purposes only
 
