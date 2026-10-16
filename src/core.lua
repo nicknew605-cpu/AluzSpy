@@ -85,7 +85,7 @@ for _, n in ipairs({ "nc", "fn", "s2c", "sys", "net", "http", "ls", "cb", "ni", 
 end
 local CFG = {
 	nc = true, dump = true, code = true, tree = true, callerDump = true, autoScripts = false, update = true,
-	decode = true, sandbox = false, net = false,
+	decode = false, sandbox = false, net = false,
 	schema = 2, ver = "", profile = "standard", autoDeobf = false, autoReverse = false,
 	redact = true, redactIds = false, protected = {}, thr = {},
 	mods = {}, crashes = {},
@@ -594,22 +594,6 @@ function F.stage(name, prio, fn)
 	F.stages[#F.stages + 1] = { name, fn, prio }
 end
 
-function F.retryStage(s)
-	task.spawn(function()
-		for n = 1, 2 do
-			task.wait(3 * n)
-			if not alive or BAN.set[s[1]] or CFG.mods[s[1]] == false then return end
-			local ok, res = pcall(s[2])
-			if ok then
-				s.state = res == false and "unsupported" or "ok"
-				return
-			end
-			noteErr("retry_" .. s[1] .. ":" .. tostring(res))
-		end
-		s.state = "failed"
-	end)
-end
-
 function F.boot()
 	touchFlag("boot", 30)
 	table.sort(F.stages, function(a, b) return a[3] < b[3] end)
@@ -627,7 +611,6 @@ function F.boot()
 				s.state = "error"
 				noteErr("boot_" .. name .. ":" .. tostring(err))
 				warn("[AluzSpy] stage " .. name .. " failed: " .. tostring(err))
-				F.retryStage(s)
 			else
 				s.state = err == false and "unsupported" or "ok"
 			end

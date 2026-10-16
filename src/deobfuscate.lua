@@ -291,9 +291,9 @@ local okDO, errDO = xpcall(function()
 		rep = function(a)
 			local s, n, sep = a[1], a[2], a[3]
 			if type(s) ~= "string" or not isint(n) or n < 0 or n > 4096 then return nil end
-			if sep ~= nil and type(sep) ~= "string" then return nil end
-			if (#s + (sep and #sep or 0)) * n > LIM.strlen then return nil end
-			return s:rep(n, sep)
+			if sep ~= nil then return nil end
+			if #s * n > LIM.strlen then return nil end
+			return s:rep(n)
 		end,
 		reverse = function(a) if type(a[1]) == "string" and #a == 1 then return a[1]:reverse() end end,
 		lower = function(a) if type(a[1]) == "string" and #a == 1 then return a[1]:lower() end end,

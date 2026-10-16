@@ -20,7 +20,7 @@ local okVP, errVP = xpcall(function()
 		},
 		standard = {
 			mods = modset(true, { "ps", "tc" }),
-			cfg = { decode = true, sandbox = false, net = false, autoDeobf = false, autoReverse = false, autoScripts = false, callerDump = true, code = true, tree = true },
+			cfg = { decode = false, sandbox = false, net = false, autoDeobf = false, autoReverse = false, autoScripts = false, callerDump = true, code = true, tree = true },
 		},
 		max = {
 			mods = modset(true, { "ps", "tc" }),

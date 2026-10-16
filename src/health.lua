@@ -193,7 +193,6 @@ local okH, errH = xpcall(function()
 		for k, v in pairs(H.integrity) do
 			if v.exposed then out[#out + 1] = k .. " looks hooked if the game inspects it" end
 		end
-		if H.conflict then out[#out + 1] = "namecall " .. H.conflict .. " by another hook" end
 		table.sort(out)
 		return out
 	end
