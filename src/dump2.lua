@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load dump2") end end
 local okD2, errD2 = xpcall(function()
 	F.api = F.api or {}
 	if CFG.decode == nil then CFG.decode = false end
@@ -297,6 +297,7 @@ local okD2, errD2 = xpcall(function()
 	end
 
 	if HAS_W and FS.exists(PATH.spool) then
+		F.trace("spool recovery start")
 		local data = FS.read(PATH.spool)
 		if type(data) == "string" and #data > 40 then
 			local out, n, pos = { "-- AluzSpy recovered dumps from a crashed session. Not runnable: scripts are separated by '-- =====' lines." }, 0, 1
@@ -320,6 +321,7 @@ local okD2, errD2 = xpcall(function()
 			end
 		end
 		FS.del(PATH.spool)
+		F.trace("spool recovery done")
 	end
 
 	D.writeOne = function()

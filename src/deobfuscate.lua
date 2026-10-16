@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load deobfuscate") end end
 local okDO, errDO = xpcall(function()
 	if not (F.tok and F.job and F.decodeCore) then return end
 	CAP.deobfuscate = true

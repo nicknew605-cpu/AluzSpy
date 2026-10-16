@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load deep") end end
 local okDP, errDP = xpcall(function()
 	if CFG.ver == nil then CFG.ver = "" end
 	if CFG.split == nil then CFG.split = false end

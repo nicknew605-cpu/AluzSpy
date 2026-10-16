@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load ui") end end
 local okUI, errUI = xpcall(function()
 	local TS, UIS = SV.TweenService, SV.UserInputService
 	local W_OPEN, W_CLOSED, H = 126, 26, 26

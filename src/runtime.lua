@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load runtime") end end
 local okRT, errRT = xpcall(function()
 	local LOADER = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/refs/heads/main/loader.lua"
 
@@ -148,6 +148,7 @@ local okRT, errRT = xpcall(function()
 	warn("[AluzSpy] loaded " .. VERSION .. " (AluzSpy.help() for commands)")
 
 	pcall(F.migrate)
+	F.trace("runtime boot")
 	task.spawn(F.boot)
 
 	if CFG.autoScripts then

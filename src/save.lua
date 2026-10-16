@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load save") end end
 local okSV, errSV = xpcall(function()
 	D.store = D.store or {}
 	D.spilled = D.spilled or {}

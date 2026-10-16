@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load core") end end
 local SV = setmetatable({}, { __index = function(t, k)
 	local v = game:GetService(k)
 	rawset(t, k, v)
@@ -86,7 +86,7 @@ end
 local CFG = {
 	nc = true, dump = true, code = true, tree = true, callerDump = true, autoScripts = false, update = true,
 	decode = false, sandbox = false, net = false,
-	schema = 2, ver = "", profile = "standard", autoDeobf = false, autoReverse = false,
+	schema = 3, ver = "", profile = "standard", autoDeobf = false, autoReverse = false,
 	redact = true, redactIds = false, protected = {}, thr = {},
 	mods = {}, crashes = {},
 }
@@ -486,6 +486,12 @@ function F.onTick(fn)
 	F.ticks[#F.ticks + 1] = fn
 end
 
+function F.trace(msg)
+	if genv.AluzSpyTrace == true and type(appendfile) == "function" then
+		pcall(appendfile, "AluzSpy/trace.log", string.format("%.2f %s\n", clock(), tostring(msg)))
+	end
+end
+
 function F.on(kind, name, fn, prio)
 	local list = OBS[kind]
 	if not list then
@@ -533,13 +539,18 @@ function F.apiMerge(t)
 end
 
 function F.migrate()
-	if CFG.ver == VERSION then return nil end
+	if CFG.ver == VERSION and (CFG.schema or 0) >= 3 then return nil end
 	local prev = CFG.ver
 	for k, v in pairs(F.defMods) do
 		if CFG.mods[k] == nil then CFG.mods[k] = v end
 	end
+	if prev == VERSION and (CFG.schema or 0) < 3 then
+		CFG.decode = false
+		CFG.autoDeobf = false
+		CFG.autoReverse = false
+	end
 	CFG.ver = VERSION
-	CFG.schema = 2
+	CFG.schema = 3
 	F.cfgSave()
 	return prev
 end
@@ -606,6 +617,7 @@ function F.boot()
 			s.state = "off"
 		else
 			touchFlag(name, 30)
+			F.trace("stage " .. name .. " start")
 			local ok, err = pcall(s[2])
 			if not ok then
 				s.state = "error"
@@ -614,6 +626,7 @@ function F.boot()
 			else
 				s.state = err == false and "unsupported" or "ok"
 			end
+			F.trace("stage " .. name .. " " .. s.state)
 			task.wait(0.12)
 		end
 	end

@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load vip") end end
 local okVP, errVP = xpcall(function()
 	CAP.vip = true
 	F.register("vip", { ver = "1.2.1-max" })

@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load core2") end end
 local okC2, errC2 = xpcall(function()
 	F.extra = {}
 	F.extraChips = {}
@@ -33,38 +33,76 @@ local okC2, errC2 = xpcall(function()
 		return (s:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0"))
 	end
 
-	local KEYS = {}
-	for _, w in ipairs({ "api[_%-]?key", "token", "secret", "passwd", "password", "authorization", "cookie", "sessionid" }) do
-		KEYS[#KEYS + 1] = ci(w)
-	end
+	local GROUPS = {
+		{ pat = ci("api[_%-]?key"), plain = { "api_key", "api-key", "apikey" } },
+		{ pat = ci("token"), plain = { "token" } },
+		{ pat = ci("secret"), plain = { "secret" } },
+		{ pat = ci("passwd"), plain = { "passwd" } },
+		{ pat = ci("password"), plain = { "password" } },
+		{ pat = ci("authorization"), plain = { "authorization" } },
+		{ pat = ci("cookie"), plain = { "cookie" } },
+		{ pat = ci("sessionid"), plain = { "sessionid" } },
+	}
 
 	local RS = { calls = 0, bytes = 0 }
+	local LONG = ("%w"):rep(56)
 
 	local function redact(s)
-		if type(s) ~= "string" or #s == 0 then return s end
+		if type(s) ~= "string" or #s == 0 or #s > 20000000 then return s end
 		RS.calls = RS.calls + 1
 		RS.bytes = RS.bytes + #s
-		s = s:gsub("_|WARNING:%-DO%-NOT%-SHARE[^%s\\\"';,]*", "[ROBLOSECURITY masked]")
-		s = s:gsub("(discord%w*%.com/api/webhooks/%d+/)([%w_%-]+)", "%1[masked]")
-		s = s:gsub("(api%.telegram%.org/bot)([%w:_%-]+)", "%1[masked]")
-		s = s:gsub("([Bb]earer%s+)([%w%-%._~%+/]+=*)", "%1[masked]")
-		s = s:gsub("eyJ[%w_%-]+%.[%w_%-]+%.[%w_%-]+", "[jwt masked]")
-		for i = 1, #KEYS do
-			s = s:gsub("(" .. KEYS[i] .. ")([\\\"']*%s*[:=]%s*[\\\"']*)([%w%-%._~%+/=]+)", function(k, sep, v)
-				if #v >= 8 then return k .. sep .. "[masked]" end
+		local low = s:lower()
+		if low:find("warning:", 1, true) then
+			s = s:gsub("_|WARNING:%-DO%-NOT%-SHARE[^%s\\\"';,]*", "[ROBLOSECURITY masked]")
+		end
+		if low:find("/api/webhooks/", 1, true) then
+			s = s:gsub("(discord%w*%.com/api/webhooks/%d+/)([%w_%-]+)", "%1[masked]")
+		end
+		if low:find("api.telegram.org/bot", 1, true) then
+			s = s:gsub("(api%.telegram%.org/bot)([%w:_%-]+)", "%1[masked]")
+		end
+		if low:find("bearer", 1, true) then
+			s = s:gsub("([Bb]earer%s+)([%w%-%._~%+/]+=*)", "%1[masked]")
+		end
+		if s:find("eyJ", 1, true) then
+			s = s:gsub("eyJ[%w_%-]+%.[%w_%-]+%.[%w_%-]+", "[jwt masked]")
+		end
+		for i = 1, #GROUPS do
+			local g = GROUPS[i]
+			local hit = false
+			for j = 1, #g.plain do
+				if low:find(g.plain[j], 1, true) then
+					hit = true
+					break
+				end
+			end
+			if hit then
+				s = s:gsub("(" .. g.pat .. ")([\\\"']*%s*[:=]%s*[\\\"']*)([%w%-%._~%+/=]+)", function(k, sep, v)
+					if #v >= 8 then return k .. sep .. "[masked]" end
+				end)
+			end
+		end
+		if low:find("@", 1, true) then
+			s = s:gsub("[%w%._%%%+%-]+@[%w%-]+%.[%w%.%-]+", "[email]")
+		end
+		if s:find("%d+%.%d+%.%d+%.%d+") then
+			s = s:gsub("(%d+)%.(%d+)%.(%d+)%.(%d+)", function(a, b, c, d)
+				a, b, c, d = tonumber(a), tonumber(b), tonumber(c), tonumber(d)
+				if a and b and c and d and a > 0 and a <= 255 and b <= 255 and c <= 255 and d <= 255 then return "[ip]" end
 			end)
 		end
-		s = s:gsub("[%w%._%%%+%-]+@[%w%-]+%.[%w%.%-]+", "[email]")
-		s = s:gsub("(%d+)%.(%d+)%.(%d+)%.(%d+)", function(a, b, c, d)
-			a, b, c, d = tonumber(a), tonumber(b), tonumber(c), tonumber(d)
-			if a and b and c and d and a > 0 and a <= 255 and b <= 255 and c <= 255 and d <= 255 then return "[ip]" end
-		end)
-		s = s:gsub("([A-Za-z]:[\\/]+[Uu]sers[\\/]+)([^\\/\"'%s]+)", "%1[user]")
-		s = s:gsub("(/[Uu]sers/)([^/\"'%s]+)", "%1[user]")
-		s = s:gsub("(/home/)([^/\"'%s]+)", "%1[user]")
-		s = s:gsub("%f[%w]%w+%f[%W]", function(w)
-			if #w >= 56 and w:find("%d") and w:find("%a") then return "[blob " .. #w .. "]" end
-		end)
+		if low:find("users", 1, true) then
+			s = s:gsub("([A-Za-z]:[\\/]+[Uu]sers[\\/]+)([^\\/\"'%s]+)", "%1[user]")
+			s = s:gsub("(/[Uu]sers/)([^/\"'%s]+)", "%1[user]")
+		end
+		if low:find("/home/", 1, true) then
+			s = s:gsub("(/home/)([^/\"'%s]+)", "%1[user]")
+		end
+		if #s <= 1500000 and s:find(LONG) then
+			s = s:gsub("%f[%w]%w+%f[%W]", function(w)
+				if #w >= 56 and w:find("%d") and w:find("%a") then return "[blob " .. #w .. "]" end
+			end)
+		end
 		if CFG.redactIds and LP then
 			local okn, nm = pcall(function() return LP.Name end)
 			local okd, dn = pcall(function() return LP.DisplayName end)

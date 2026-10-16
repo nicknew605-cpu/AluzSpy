@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load hooks2") end end
 local okHX, errHX = xpcall(function()
 	MOD.hx = false
 	INST.hx = false

@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" end
+do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load decode") end end
 local okDC, errDC = xpcall(function()
 	if CFG.decode == nil then CFG.decode = true end
 	if CFG.sandbox == nil then CFG.sandbox = false end
