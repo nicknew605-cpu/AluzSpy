@@ -12,6 +12,12 @@ Removed the automatic retry of failed hook stages, because re-running an install
 
 loader: files are downloaded by 6 parallel workers instead of all at once.
 
+core2: redaction only runs the rules that can match and skips the slowest scan on big reports, so saving a multi-MB session no longer freezes the game (about 15 times faster).
+
+Debug: set `getgenv().AluzSpyTrace = true` before the loader to write `AluzSpy/trace.log` with every module load and hook stage. After a crash, the last line shows where it stopped.
+
+core: one-time config migration (schema 3). A config saved by the earlier Max build with `decode` on is switched back to off. Your later choices are kept.
+
 health: a replaced `__namecall` is no longer counted as a warning, because the check can give false alarms on some executors.
 
 deobfuscate: `string.rep` with a separator is no longer folded, since Luau ignores that argument.

@@ -49,6 +49,15 @@ pcall(function()
 	if type(makefolder) == "function" and type(isfolder) == "function" and not isfolder("AluzSpy") then makefolder("AluzSpy") end
 end)
 
+local function trace(msg)
+	if ENV.AluzSpyTrace == true and type(appendfile) == "function" then
+		pcall(appendfile, "AluzSpy/trace.log", string.format("%.2f loader %s\n", os.clock(), msg))
+	end
+end
+
+if ENV.AluzSpyTrace == true and type(writefile) == "function" then pcall(writefile, "AluzSpy/trace.log", "") end
+trace("start " .. VERSION)
+
 local mods = {}
 for _, m in ipairs(ORDER) do
 	if DISABLED[m[1]] and not m[2] then
@@ -80,6 +89,7 @@ end
 
 local t0 = os.clock()
 while pending > 0 and os.clock() - t0 < 25 do task.wait(0.05) end
+trace("downloaded, pending " .. pending)
 
 local active, missing = {}, {}
 for _, m in ipairs(mods) do
@@ -155,7 +165,9 @@ if not manifest.fromCache then
 	end
 end
 
+trace("compiled, running")
 local ok, runErr = xpcall(fn, function(e) return tostring(e) .. "\n" .. debug.traceback() end)
+trace("run finished " .. tostring(ok))
 if not ok then
 	manifest.runError = tostring(runErr)
 	fail("run: " .. tostring(runErr))
