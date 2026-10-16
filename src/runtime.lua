@@ -1,12 +1,13 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okRT, errRT = xpcall(function()
-	local LOADER = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/refs/heads/main/Stable"
+	local LOADER = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/refs/heads/main/loader.lua"
 
 	conns[#conns + 1] = SV.RunService.Heartbeat:Connect(function(dt)
 		if not alive then return end
 		if dt > 3.5 then X.stall = true end
 		if dt > 0 then X.fps = X.fps * 0.95 + (1 / dt) * 0.05 end
 		busy = true
-		local budget = (qt - qh) > QCAP / 2 and 0.006 or 0.0025
+		local budget = F.budget()
 		local ok, err = pcall(F.process, budget)
 		if not ok then noteErr(err) end
 		if D.jobs[1] or D.h <= D.t then
@@ -70,6 +71,10 @@ local okRT, errRT = xpcall(function()
 		modify = function(n, f) X.mod[n] = f rules() end,
 		unmodify = function(n) X.mod[n] = nil rules() end,
 		reset = F.reset,
+		modules = F.modules,
+		protect = function(n) CFG.protected[tostring(n)] = true F.cfgSave() return CFG.protected end,
+		unprotect = function(n) CFG.protected[tostring(n)] = nil F.cfgSave() return CFG.protected end,
+		threshold = function(n, m) CFG.thr[tostring(n)] = tonumber(m) F.cfgSave() return CFG.thr end,
 		shutdown = shutdown,
 		stats = F.stats,
 		errors = function() return errMap end,
@@ -126,8 +131,10 @@ local okRT, errRT = xpcall(function()
 			return f ~= nil
 		end,
 		help = function()
-			warn("[AluzSpy] save() report() missing() chain() split(bool) find(text,n) top(n) stats() debug() errors()")
-			warn("[AluzSpy] decode(file) analyze(file,net) decodeAll() gcmap(deep) whoCalls(name) callgraph() tree() scriptDiff()")
+			warn("[AluzSpy] save() report() missing() chain() split(bool) find(text,n) top(n) stats() debug() errors() modules()")
+			warn("[AluzSpy] decode(file) analyze(file,net) decodeAll() deobf(file) deobfAll() deobfReport() set(key,bool)")
+			warn("[AluzSpy] reverse(opts) reverseFind(text) gcmap(deep) whoCalls(name) callgraph() tree() scriptDiff()")
+			warn("[AluzSpy] vip() vip(\"scan\"|\"report\"|\"redact\"|\"safe\"|\"profile\", name) protect(name) threshold(name,mult)")
 			warn("[AluzSpy] health() actors() dump(bool) dumpScripts(filter) block(name) modify(name,fn) reset() reload() shutdown()")
 		end,
 	}
@@ -140,6 +147,7 @@ local okRT, errRT = xpcall(function()
 	if F.recoveredFile and F.notify then F.notify("Recovered dumps: " .. tostring(F.recoveredFile):match("[^/]+$")) end
 	warn("[AluzSpy] loaded " .. VERSION .. " (AluzSpy.help() for commands)")
 
+	pcall(F.migrate)
 	task.spawn(F.boot)
 
 	if CFG.autoScripts then

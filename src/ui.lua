@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okUI, errUI = xpcall(function()
 	local TS, UIS = SV.TweenService, SV.UserInputService
 	local W_OPEN, W_CLOSED, H = 126, 26, 26
@@ -103,9 +104,9 @@ local okUI, errUI = xpcall(function()
 			local cs, parts = F.catSummary and F.catSummary() or {}, {}
 			for k, v in pairs(cs) do parts[#parts + 1] = k .. " " .. v end
 			table.sort(parts)
-			return string.format("calls %d  logged %d\nremotes %d  muted %d  errors %d\ndumps %d  %s\nfps %d  mem %dMB\nhooks %s\nwarnings %d",
+			return string.format("calls %d  logged %d\nremotes %d  muted %d  errors %d\ndumps %d  %s\nfps %d  mem %dMB\nhooks %s\nwarnings %d\n%s",
 				s.total, s.logged, s.remotes, s.muted, s.errors, s.dumps, table.concat(parts, " "), s.fps, s.mem,
-				F.hookLine and F.hookLine() or "n/a", F.warnN or 0)
+				F.hookLine and F.hookLine() or "n/a", F.warnN or 0, F.vipLine and F.vipLine() or "max std")
 		end
 		return "session file:\n" .. PATH.session .. "\n\ncache/spool:\n" .. PATH.dir
 	end
@@ -122,7 +123,7 @@ local okUI, errUI = xpcall(function()
 		end
 		popMode = mode
 		popLabel.Text = popText(mode)
-		popH = mode == "stats" and 92 or 80
+		popH = mode == "stats" and 104 or 80
 		pop.Visible = true
 		TS:Create(pop, TI_FOLD, { Size = UDim2.fromOffset(190, popH) }):Play()
 	end
@@ -133,6 +134,7 @@ local okUI, errUI = xpcall(function()
 		if mn > 0 then s = s .. " m" .. mn end
 		if (F.warnN or 0) > 0 then s = s .. " !" end
 		if X.recovered then s = "R " .. s elseif BAN.safe then s = "S " .. s end
+		if F.vipOn and F.vipOn() then s = "+" .. s end
 		cnt.Text = s
 		if popMode == "stats" then popLabel.Text = popText("stats") end
 	end

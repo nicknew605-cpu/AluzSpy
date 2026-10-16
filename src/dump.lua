@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.1-max" end
 do
 	local OBF = {
 		{ "Luraph", "Luraph" }, { "LPH[%$%~%@%|]", "Luraph" }, { "MoonSec", "MoonSec" },
@@ -143,16 +144,14 @@ do
 		D.writeOne()
 	end
 
-	function D.queueScript(sc)
-		if not (CAP.decompile and S.dump) or D.sd[sc] or D.sdn >= 400 then return end
-		D.sd[sc] = true
-		D.sdn = D.sdn + 1
-		D.sq[#D.sq + 1] = sc
+	function D.queueScript(sc, prio)
+		if not (CAP.decompile and S.dump) or not D.admit(sc, prio) then return end
+		D.push(sc, prio)
 		if D.running then return end
 		D.running = true
 		task.spawn(function()
 			while alive and #D.sq > 0 do
-				local s = table.remove(D.sq, 1)
+				local s = D.pop()
 				local ok, src = pcall(decompile, s)
 				if ok and type(src) == "string" and #src > 16 then
 					local okn, nm = pcall(function() return s.Name end)
@@ -165,7 +164,7 @@ do
 			D.running = false
 		end)
 	end
-	F.callerDump = D.queueScript
+	F.callerDump = function(sc) return D.queueScript(sc, 1) end
 
 	local function scanList(list, filter)
 		if type(list) ~= "table" then return 0 end
@@ -175,7 +174,7 @@ do
 			local ok, full = pcall(s.GetFullName, s)
 			if ok and not full:find("CoreGui", 1, true) and not full:find("RobloxGui", 1, true)
 				and (not filter or full:lower():find(filter, 1, true)) then
-				D.queueScript(s)
+				D.queueScript(s, 3)
 				c = c + 1
 				if c >= 400 then break end
 			end

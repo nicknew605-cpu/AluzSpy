@@ -1,7 +1,8 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okD2, errD2 = xpcall(function()
 	F.api = F.api or {}
-	CFG.decode = false
-	CFG.sandbox = false
+	if CFG.decode == nil then CFG.decode = false end
+	if CFG.sandbox == nil then CFG.sandbox = false end
 
 	local STORE_MAX = 24 * 1024 * 1024
 	local byte = string.byte

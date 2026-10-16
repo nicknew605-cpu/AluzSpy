@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okHX, errHX = xpcall(function()
 	MOD.hx = false
 	INST.hx = false

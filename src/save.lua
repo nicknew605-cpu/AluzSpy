@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okSV, errSV = xpcall(function()
 	D.store = D.store or {}
 	D.spilled = D.spilled or {}
@@ -190,17 +191,18 @@ local okSV, errSV = xpcall(function()
 			end
 		end)
 		local meta = {
-			tool = "Aluz Spy", version = VERSION, schema = 5, executor = exec, place = game.PlaceId, job = game.JobId,
+			tool = "Aluz Spy", version = VERSION, schema = 6, executor = exec, place = game.PlaceId, job = game.JobId,
 			exported = os.date("%Y-%m-%d %H:%M:%S"), reason = reason, session_file = PATH.session,
 			dump_file = (D.n > 0) and PATH.dumpfile or nil, uptime = r2(clock() - T0), safe_boot = BAN.safe,
 			banned = BAN.list, recovered = X.recovered, capabilities = CAP, stats = F.stats(),
 			categories = F.catSummary and F.catSummary() or nil, health = F.extra.health and F.extra.health() or nil,
 			ext = F.ext and F.ext() or nil, last_errors = errMap,
+			redaction = F.redactStats and F.redactStats() or { on = false },
 		}
 		local chain = F.chainText and F.chainText() or {}
 		for i = #chain, 201, -1 do chain[i] = nil end
 		for i = 1, #chain do chain[i] = murl(chain[i]) end
-		local head = '{"schema":5,"meta":' .. (F.enc(meta) or "{}")
+		local head = '{"schema":6,"meta":' .. (F.enc(meta) or "{}")
 			.. ',"summary":' .. (F.enc(F.summaryLines()) or "[]")
 			.. ',"alerts":' .. (F.enc(F.alerts or {}) or "[]")
 			.. ',"missing":' .. (F.enc(F.missing and F.missing() or {}) or "[]")
@@ -210,13 +212,23 @@ local okSV, errSV = xpcall(function()
 			.. ',"actions":' .. (F.enc(computeActions(recs)) or "[]")
 			.. ',"important":' .. (F.enc(importantRemotes(recs)) or "[]")
 			.. ',"spam":' .. (F.enc(F.spamList and F.spamList() or {}) or "[]")
+			.. ',"modules":' .. (F.enc(F.modules and F.modules() or {}) or "{}")
+			.. ',"deobf":' .. (F.enc(F.deobfReport and F.deobfReport() or {}) or "{}")
+			.. ',"reverse":' .. (F.enc(F.reverseSummary and F.reverseSummary() or {}) or "{}")
+			.. ',"vip":' .. (F.enc(F.vipStatus and F.vipStatus() or {}) or "{}")
+			.. ',"dumpfail":' .. (F.enc(F.extra.dumpfail and F.extra.dumpfail() or {}) or "{}")
 			.. ',"remotes":' .. (F.enc(remList()) or "[]") .. ',"logs":['
 		local lines = {}
 		for i = 1, #recs do
 			local js = F.enc(recOut(recs[i]))
 			if js then lines[#lines + 1] = js end
 		end
-		return head .. "\n" .. table.concat(lines, ",\n") .. "\n]}"
+		local out = head .. "\n" .. table.concat(lines, ",\n") .. "\n]}"
+		if CFG.redact and F.redact then
+			local okr, res = pcall(F.redact, out)
+			if okr and type(res) == "string" then out = res end
+		end
+		return out
 	end
 
 	local function writeDump()

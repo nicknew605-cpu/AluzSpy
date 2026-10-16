@@ -1,9 +1,12 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okWT, errWT = xpcall(function()
 	F.api = F.api or {}
 	F.alerts = {}
 	for _, n in ipairs({ "ps", "tc" }) do
 		MOD[n] = false
 		INST[n] = false
+		F.defMods[n] = false
+		if CFG.mods[n] == nil then CFG.mods[n] = false end
 	end
 
 	local function mask(s)
@@ -25,6 +28,59 @@ local okWT, errWT = xpcall(function()
 		return u
 	end
 	F.mask, F.maskUrl = mask, maskUrl
+
+	local function ci(w)
+		return (w:gsub("%a", function(c) return "[" .. c:lower() .. c:upper() .. "]" end))
+	end
+
+	local function escPat(s)
+		return (s:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0"))
+	end
+
+	local KEYS = {}
+	for _, w in ipairs({ "api[_%-]?key", "token", "secret", "passwd", "password", "authorization", "cookie", "sessionid" }) do
+		KEYS[#KEYS + 1] = ci(w)
+	end
+
+	local RS = { calls = 0, bytes = 0 }
+
+	local function redact(s)
+		if type(s) ~= "string" or #s == 0 then return s end
+		RS.calls = RS.calls + 1
+		RS.bytes = RS.bytes + #s
+		s = s:gsub("_|WARNING:%-DO%-NOT%-SHARE[^%s\\\"';,]*", "[ROBLOSECURITY masked]")
+		s = s:gsub("(discord%w*%.com/api/webhooks/%d+/)([%w_%-]+)", "%1[masked]")
+		s = s:gsub("(api%.telegram%.org/bot)([%w:_%-]+)", "%1[masked]")
+		s = s:gsub("([Bb]earer%s+)([%w%-%._~%+/]+=*)", "%1[masked]")
+		s = s:gsub("eyJ[%w_%-]+%.[%w_%-]+%.[%w_%-]+", "[jwt masked]")
+		for i = 1, #KEYS do
+			s = s:gsub("(" .. KEYS[i] .. ")([\\\"']*%s*[:=]%s*[\\\"']*)([%w%-%._~%+/=]+)", function(k, sep, v)
+				if #v >= 8 then return k .. sep .. "[masked]" end
+			end)
+		end
+		s = s:gsub("[%w%._%%%+%-]+@[%w%-]+%.[%w%.%-]+", "[email]")
+		s = s:gsub("(%d+)%.(%d+)%.(%d+)%.(%d+)", function(a, b, c, d)
+			a, b, c, d = tonumber(a), tonumber(b), tonumber(c), tonumber(d)
+			if a and b and c and d and a > 0 and a <= 255 and b <= 255 and c <= 255 and d <= 255 then return "[ip]" end
+		end)
+		s = s:gsub("([A-Za-z]:[\\/]+[Uu]sers[\\/]+)([^\\/\"'%s]+)", "%1[user]")
+		s = s:gsub("(/[Uu]sers/)([^/\"'%s]+)", "%1[user]")
+		s = s:gsub("(/home/)([^/\"'%s]+)", "%1[user]")
+		s = s:gsub("%f[%w]%w+%f[%W]", function(w)
+			if #w >= 56 and w:find("%d") and w:find("%a") then return "[blob " .. #w .. "]" end
+		end)
+		if CFG.redactIds and LP then
+			local okn, nm = pcall(function() return LP.Name end)
+			local okd, dn = pcall(function() return LP.DisplayName end)
+			local oki, id = pcall(function() return LP.UserId end)
+			if okn and type(nm) == "string" and #nm >= 3 then s = s:gsub(escPat(nm), "[player]") end
+			if okd and type(dn) == "string" and #dn >= 3 then s = s:gsub(escPat(dn), "[player]") end
+			if oki and id and id ~= 0 then s = s:gsub("%f[%d]" .. tostring(id) .. "%f[%D]", "[userid]") end
+		end
+		return s
+	end
+	F.redact = redact
+	F.redactStats = function() return { calls = RS.calls, bytes = RS.bytes, on = CFG.redact == true, ids = CFG.redactIds == true } end
 
 	local SCH, schN = {}, 0
 	local function noteSchema(inst, dir, a)

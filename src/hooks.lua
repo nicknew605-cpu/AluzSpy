@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.1-max" end
 do
 	local HS = SV.HttpService
 	local INTEREST = {
@@ -270,7 +271,9 @@ do
 		end
 		if not (hookmetamethod and getnm) then return false end
 		touchFlag("nc", 30)
-		local ok, old = pcall(hookmetamethod, game, "__namecall", nc(F.ncHook))
+		local wrap = nc(F.ncHook)
+		F.ncWrap = wrap
+		local ok, old = pcall(hookmetamethod, game, "__namecall", wrap)
 		if ok and type(old) == "function" then
 			oldNc = old
 			INST.nc = true

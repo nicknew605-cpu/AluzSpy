@@ -1,7 +1,22 @@
+do local _ = "aluzspy@1.2.1-max" end
 do
 	local SAMPLE = { 6, 12, 24 }
 	local FLOOD = { 70, 40, 25 }
 	local LOOPMIN = { 20, 12, 8 }
+
+	local function thrMul(st)
+		local t = CFG.thr
+		if type(t) == "table" then
+			local v = t[st.nm] or t[st.full]
+			if type(v) == "number" and v > 0 then return v end
+		end
+		return 1
+	end
+
+	function F.isProtected(st)
+		local p = CFG.protected
+		return type(p) == "table" and (p[st.nm] == true or p[st.full] == true)
+	end
 
 	local function spamClass(st, kind)
 		local key = st.dir .. "|" .. st.full
@@ -58,7 +73,6 @@ do
 
 	local function emit(st, e, strs, n, key, now, mode, samp)
 		local rec = st.rec
-		-- VIP FIX: Thêm mode "smp" vào logic merge để tránh tràn log
 		if (mode == "merge" or mode == "sample" or mode == "smp") and rec and rec.live and rec.sg == key and now - rec.t0 < WIN then
 			rec.n = rec.n + 1
 			rec.tl = r2(now - T0)
@@ -143,11 +157,10 @@ do
 		end
 		local strs, n = packStr(e.a, 4)
 		local sig = n .. "\31" .. table.concat(strs, "\31", 1, math.min(#strs, 3))
-		
-		-- VIP UPGRADE: Advanced Adaptive Shape Analysis
+
 		local shape = (sig:gsub("%-?%d+%.?%d*", "#"))
-		shape = shape:gsub('"[^"]*"', '"STR"') -- Bỏ qua random string để bắt cấu trúc table
-		
+		shape = shape:gsub('"[^"]*"', '"STR"')
+
 		if sig == st.ls then
 			st.rep = st.rep + 1
 		else
@@ -163,8 +176,7 @@ do
 			st.nshape = st.nshape + 1
 		end
 		local isNew, newShape = false, false
-		
-		-- VIP UPGRADE: Smart Cache AI (Xóa bỏ limit 24, dùng cache thông minh)
+
 		if not st.seen[sig] then
 			st.seen[sig] = true
 			st.nseen = st.nseen + 1
@@ -177,10 +189,9 @@ do
 			newShape = true
 			if st.nshapeSeen > 500 then st.shapeSeen = {}; st.nshapeSeen = 0 end
 		end
-		
+
 		local L = X.load
 		if st.mu then
-			-- VIP UPGRADE: Fix mu.c counter bug triệt để
 			st.mu.c = st.mu.c + 1
 			if st.mu.c % st.mu.every == 1 then
 				emit(st, e, strs, n, sig, now, "smp", 1)
@@ -208,13 +219,14 @@ do
 		local stream = st.nsig >= 8 and st.nshape <= 2
 		local z = 0
 		if st.ticks >= 5 then z = (rate - st.mean) / (math.sqrt(st.vr) + 1) end
-		if not prot then
+		if not prot and not F.isProtected(st) then
 			local kind = nil
-			if rate >= FLOOD[L + 1] then
+			local m = thrMul(st)
+			if rate >= FLOOD[L + 1] * m then
 				kind = "flood"
-			elseif rate >= LOOPMIN[L + 1] and st.rep >= 5 and (periodic or st.rep >= 12) then
+			elseif rate >= LOOPMIN[L + 1] * m and st.rep >= 5 and (periodic or st.rep >= 12) then
 				kind = "loop"
-			elseif rate >= LOOPMIN[L + 1] + 5 and z > 4 and not stream then
+			elseif rate >= (LOOPMIN[L + 1] + 5) * m and z > 4 and not stream then
 				kind = "burst"
 			end
 			if kind then

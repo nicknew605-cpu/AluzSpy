@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okDC, errDC = xpcall(function()
 	if CFG.decode == nil then CFG.decode = true end
 	if CFG.sandbox == nil then CFG.sandbox = false end
@@ -356,25 +357,67 @@ local okDC, errDC = xpcall(function()
 		return false
 	end
 
+	local function prevSig(toks, i)
+		local k = i - 1
+		while k >= 1 do
+			local t = toks[k]
+			if t.t ~= "comment" and t.t ~= "lcomment" then return t end
+			k = k - 1
+		end
+		return nil
+	end
+
+	local function nextSig(toks, i)
+		local k = i + 1
+		local n = #toks
+		while k <= n do
+			local t = toks[k]
+			if t.t ~= "comment" and t.t ~= "lcomment" then return t end
+			k = k + 1
+		end
+		return nil
+	end
+
 	local function renamePass(toks, stats)
-		local count, order, used = {}, {}, {}
+		local count, order, used, strs = {}, {}, {}, {}
+		local isVar = {}
+		local brace = {}
 		for i = 1, #toks do
 			if i % 1024 == 0 then Y() end
 			local t = toks[i]
-			if t.t == "name" then
-				used[t.s] = true
-				if weird(t.s) then
-					if not count[t.s] then
-						count[t.s] = 0
-						order[#order + 1] = t.s
-					end
-					count[t.s] = count[t.s] + 1
+			if t.t == "op" then
+				local s = t.s
+				if s == "{" or s == "(" or s == "[" then
+					brace[#brace + 1] = s
+				elseif s == "}" or s == ")" or s == "]" then
+					brace[#brace] = nil
 				end
+			elseif t.t == "name" then
+				used[t.s] = true
+				local p, nx = prevSig(toks, i), nextSig(toks, i)
+				local member = p and p.t == "op" and (p.s == "." or p.s == ":")
+				if not member and p and p.t == "op" and (p.s == "{" or p.s == "," or p.s == ";") and brace[#brace] == "{"
+					and nx and nx.t == "op" and nx.s == "=" then
+					member = true
+				end
+				if not member then
+					isVar[i] = true
+					if weird(t.s) then
+						if not count[t.s] then
+							count[t.s] = 0
+							order[#order + 1] = t.s
+						end
+						count[t.s] = count[t.s] + 1
+					end
+				end
+			elseif t.t == "string" then
+				local v = t.v or t.lv
+				if v and #v <= 64 and weird(v) then strs[v] = true end
 			end
 		end
 		local map, k = {}, 0
 		for _, nm in ipairs(order) do
-			if count[nm] >= 2 then
+			if count[nm] >= 2 and not strs[nm] then
 				repeat k = k + 1 until not used["v" .. k]
 				map[nm] = "v" .. k
 				stats.rename = stats.rename + 1
@@ -383,7 +426,7 @@ local okDC, errDC = xpcall(function()
 		if next(map) == nil then return end
 		for i = 1, #toks do
 			local t = toks[i]
-			if t.t == "name" and map[t.s] then t.s = map[t.s] end
+			if isVar[i] and map[t.s] then t.s = map[t.s] end
 		end
 	end
 
@@ -638,6 +681,9 @@ local okDC, errDC = xpcall(function()
 		return rep
 	end
 
+	F.tok = { tokenize = tokenize, unescape = unescape, quote = quote, b64 = b64decode, hex = hexdecode, format = formatToks, kw = KW }
+	F.decInJob = function() return DEC.inJob end
+
 	function F.decodeCore(src)
 		local stats = { unesc = 0, fold = 0, rename = 0 }
 		local toks = tokenize(src)
@@ -697,6 +743,21 @@ local okDC, errDC = xpcall(function()
 			return type(s) == "string" and s:find("^https?://") ~= nil
 		end
 
+		local fetches = 0
+		local function netOk(u)
+			if fetches >= 3 then return false end
+			local host = u:match("^https?://([^/:%?#]+)")
+			if not host then return false end
+			host = host:lower()
+			if host == "localhost" or host:find("^127%.") or host:find("^10%.") or host:find("^192%.168%.") or host:find("^169%.254%.")
+				or host:find("^172%.[123]%d%.") or host:find("%.local$") or host:find("%.internal$") or host:find("^0%.") then
+				return false
+			end
+			fetches = fetches + 1
+			logf("fetch " .. u)
+			return true
+		end
+
 		local mockMT = { __metatable = "locked" }
 		local function mkmock(path)
 			local m = setmetatable({}, mockMT)
@@ -751,9 +812,12 @@ local okDC, errDC = xpcall(function()
 			local first = selfIsMock and a2 or a1
 			if name == "HttpGet" or name == "HttpGetAsync" or name == "HttpPost" or name == "HttpPostAsync" then
 				if isUrl(first) then st.urls[#st.urls + 1] = first end
-				if opts.net and isUrl(first) then
+				if opts.net and isUrl(first) and netOk(first) then
 					local ok, body = pcall(function() return game:HttpGet(first) end)
-					if ok and type(body) == "string" then return body end
+					if ok and type(body) == "string" then
+						if #body > 524288 then body = body:sub(1, 524288) end
+						return body
+					end
 				end
 				return "return nil"
 			elseif name == "GetService" and type(first) == "string" then
@@ -1104,9 +1168,9 @@ local okDC, errDC = xpcall(function()
 		return b .. suffix
 	end
 
-	local SETTABLE = { decode = true, sandbox = true, net = true, code = true, tree = true, callerDump = true }
+	local SETTABLE = { decode = true, sandbox = true, net = true, code = true, tree = true, callerDump = true, autoDeobf = true, autoReverse = true, redact = true, redactIds = true }
 
-	F.api = {
+	local DAPI = {
 		decode = function(x)
 			local src, nm = resolveSrc(x)
 			if not src then return nil, "no source" end
@@ -1150,6 +1214,8 @@ local okDC, errDC = xpcall(function()
 			return CFG[key]
 		end,
 	}
+	F.apiMerge(DAPI)
+	F.resolveSrc = resolveSrc
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()
 end)

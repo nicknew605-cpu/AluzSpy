@@ -1,14 +1,11 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okDP, errDP = xpcall(function()
 	if CFG.ver == nil then CFG.ver = "" end
 	if CFG.split == nil then CFG.split = false end
 	F.cfgLoad()
 	F.defMods.req = true
-	if CFG.ver ~= "1.2.1" then
-		CFG.ver = "1.2.1"
-		for k in pairs(F.defMods) do CFG.mods[k] = true end
-		F.cfgSave()
-	end
-	CFG.nc = true
+	if CFG.ver == "" then CFG.mods.req = true end
+	F.migrate()
 
 	local DP = { untilT = 0, hits = 0, why = {}, second = false }
 	F.deep = DP

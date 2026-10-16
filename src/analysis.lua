@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okAN, errAN = xpcall(function()
 	if not F.job then return end
 
@@ -55,17 +56,15 @@ local okAN, errAN = xpcall(function()
 			or head:find("not supported", 1, true) ~= nil or head:find("decompiler error", 1, true) ~= nil
 	end
 
-	D.queueScript = function(sc)
-		if not S.dump or D.sd[sc] or D.sdn >= 400 then return end
+	D.queueScript = function(sc, prio)
+		if not S.dump or not D.admit(sc, prio) then return end
 		if not CAP.decompile and type(getscriptbytecode) ~= "function" then return end
-		D.sd[sc] = true
-		D.sdn = D.sdn + 1
-		D.sq[#D.sq + 1] = sc
+		D.push(sc, prio)
 		if D.running then return end
 		D.running = true
 		task.spawn(function()
 			while alive and #D.sq > 0 do
-				local s = table.remove(D.sq, 1)
+				local s = D.pop()
 				local okn, nm = pcall(function() return s.Name end)
 				local okf, full = pcall(s.GetFullName, s)
 				local name = okn and nm or "x"
@@ -90,7 +89,7 @@ local okAN, errAN = xpcall(function()
 			D.running = false
 		end)
 	end
-	F.callerDump = D.queueScript
+	F.callerDump = function(sc) return D.queueScript(sc, 1) end
 
 	local SKIP = { Players = 1, Workspace = 1, Event = 1, Remote = 1, Name = 1, Value = 1, Humanoid = 1, Character = 1, Part = 1 }
 
@@ -262,7 +261,7 @@ local okAN, errAN = xpcall(function()
 			if #res.changed + #res.added > 0 then
 				newRec("SYS", "scripts", "diff", { "changed " .. #res.changed, "added " .. #res.added }, clock())
 				if S.dump then
-					for i = 1, #refs do D.queueScript(refs[i]) end
+					for i = 1, #refs do D.queueScript(refs[i], 1) end
 				end
 			end
 			note(res.first and "script baseline saved" or ("scripts: " .. #res.changed .. " changed, " .. #res.added .. " new"))

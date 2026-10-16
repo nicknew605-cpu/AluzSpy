@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.1-max" end
 local SV = setmetatable({}, { __index = function(t, k)
 	local v = game:GetService(k)
 	rawset(t, k, v)
@@ -19,7 +20,7 @@ do
 	end
 end
 
-local VERSION = "1.2.1-stable"
+local VERSION = "1.2.1-max"
 local clock = os.clock
 local pack = table.pack
 local unpack = table.unpack or unpack
@@ -36,11 +37,13 @@ for _, n in ipairs({
 	"makefolder", "isfolder", "delfile", "listfiles", "setclipboard", "decompile", "getscriptbytecode",
 	"getnilinstances", "getscripts", "getloadedmodules", "request", "loadstring", "loadfile", "dofile",
 	"getconnections", "firesignal", "fireclickdetector", "fireproximityprompt", "firetouchinterest",
-	"setfenv", "getfenv",
+	"setfenv", "getfenv", "getupvalues", "getconstants", "getprotos", "getscriptclosure", "getscripthash",
+	"getgc", "getinstances", "getrawmetatable", "iscclosure",
 }) do
 	CAP[n] = type(genv[n]) == "function"
 end
 CAP.websocket = type(genv.WebSocket) == "table" or type(genv.websocket) == "table"
+CAP.deobfuscate, CAP.reverse, CAP.vip = false, false, false
 
 local PATH = { dir = "AluzSpy", dumpDir = "AluzSpy/Dump", ok = false }
 do
@@ -70,7 +73,7 @@ PATH.tag = os.date("%H%M%S")
 local K = {
 	LOGCAP = 1500, BUCKET_MAX = 400, BUCKET_RATE = 240, ATT_CAP = 300, RF_CAP = 200,
 	DUMP_MAX = 300, DUMP_FILE_MAX = 8388608, DUMP_PEND_MAX = 25165824, DUMP_TOTAL = 67108864,
-	MEM_ABS = 2200, MEM_GROW = 800,
+	MEM_ABS = 2200, MEM_GROW = 800, SCRIPT_CAP = 400, SCRIPT_RESERVE = 100,
 }
 local QCAP, WIN = 3072, 1.2
 
@@ -83,6 +86,8 @@ end
 local CFG = {
 	nc = true, dump = true, code = true, tree = true, callerDump = true, autoScripts = false, update = true,
 	decode = true, sandbox = false, net = false,
+	schema = 2, ver = "", profile = "standard", autoDeobf = false, autoReverse = false,
+	redact = true, redactIds = false, protected = {}, thr = {},
 	mods = {}, crashes = {},
 }
 local alive, busy = true, false
@@ -114,11 +119,13 @@ local RF = {
 local D = {
 	seen = {}, n = 0, list = {}, q = {}, h = 1, t = 0, pending = 0, skipped = 0, fail = 0,
 	files = {}, bytes = 0, jobs = {}, sd = setmetatable({}, weak), sdf = setmetatable({}, weak), sdn = 0, sq = {},
+	sqp = setmetatable({}, weak), fails = {},
 }
 local BAN = { set = {}, list = {}, safe = false, disabled = {} }
 local FS = {}
 local saveNow, handle, uiCount
 local IN = {}
+local OBS, REG = {}, {}
 local F = { h = {}, ticks = {}, stages = {}, defMods = {
 	fn = true, s2c = true, sys = true, net = true, http = true, ls = true, cb = true, ni = true, rw = true, ws = true,
 	req = false, hx = true,
@@ -436,7 +443,22 @@ function F.hookWith(fn, make, useNc)
 end
 
 handle = function(e, now)
-	local h = F.h[e.k]
+	local k = e.k
+	local ob = OBS[k]
+	if ob then
+		for i = 1, #ob do
+			local o = ob[i]
+			if o.on then
+				local ok, err = pcall(o.fn, e, e.t or now)
+				if not ok then
+					o.err = o.err + 1
+					noteErr("obs_" .. tostring(o.name) .. ":" .. tostring(err))
+					if o.err >= 25 then o.on = false end
+				end
+			end
+		end
+	end
+	local h = F.h[k]
 	if h then h(e, e.t or now) end
 end
 
@@ -462,6 +484,86 @@ end
 
 function F.onTick(fn)
 	F.ticks[#F.ticks + 1] = fn
+end
+
+function F.on(kind, name, fn, prio)
+	local list = OBS[kind]
+	if not list then
+		list = {}
+		OBS[kind] = list
+	end
+	local o = { name = name, fn = fn, prio = prio or 50, on = true, err = 0 }
+	local i = #list
+	while i > 0 and list[i].prio > o.prio do i = i - 1 end
+	table.insert(list, i + 1, o)
+	return o
+end
+
+function F.budget()
+	local fill = (qt - qh) / QCAP
+	if fill > 0.5 then return 0.006 end
+	if X.fps < 20 then return 0.0015 end
+	return 0.0025
+end
+
+function F.register(name, info)
+	local r = REG[name]
+	if not r then
+		r = { name = name, state = "loaded", err = 0 }
+		REG[name] = r
+	end
+	if type(info) == "table" then
+		for k, v in pairs(info) do r[k] = v end
+	end
+	return r
+end
+
+function F.modules()
+	local out = {}
+	for n, r in pairs(REG) do out[n] = { state = r.state, ver = r.ver, err = r.err, note = r.note } end
+	local stages = {}
+	for i = 1, #F.stages do stages[F.stages[i][1]] = F.stages[i].state or "pending" end
+	local m = genv.AluzSpyManifest
+	return { registry = out, stages = stages, manifest = type(m) == "table" and m or nil }
+end
+
+function F.apiMerge(t)
+	F.api = F.api or {}
+	for k, v in pairs(t) do F.api[k] = v end
+end
+
+function F.migrate()
+	if CFG.ver == VERSION then return nil end
+	local prev = CFG.ver
+	for k, v in pairs(F.defMods) do
+		if CFG.mods[k] == nil then CFG.mods[k] = v end
+	end
+	CFG.ver = VERSION
+	CFG.schema = 2
+	F.cfgSave()
+	return prev
+end
+
+function D.admit(sc, p)
+	if D.sd[sc] then return false end
+	local cap = K.SCRIPT_CAP
+	if p == 1 then cap = cap + K.SCRIPT_RESERVE end
+	return D.sdn < cap
+end
+
+function D.push(sc, p)
+	p = p or 2
+	D.sd[sc] = true
+	D.sdn = D.sdn + 1
+	D.sqp[sc] = p
+	local sq = D.sq
+	local i = #sq
+	while i > 0 and (D.sqp[sq[i]] or 2) > p do i = i - 1 end
+	table.insert(sq, i + 1, sc)
+end
+
+function D.pop()
+	return table.remove(D.sq, 1)
 end
 
 function F.tick(now)
@@ -492,6 +594,22 @@ function F.stage(name, prio, fn)
 	F.stages[#F.stages + 1] = { name, fn, prio }
 end
 
+function F.retryStage(s)
+	task.spawn(function()
+		for n = 1, 2 do
+			task.wait(3 * n)
+			if not alive or BAN.set[s[1]] or CFG.mods[s[1]] == false then return end
+			local ok, res = pcall(s[2])
+			if ok then
+				s.state = res == false and "unsupported" or "ok"
+				return
+			end
+			noteErr("retry_" .. s[1] .. ":" .. tostring(res))
+		end
+		s.state = "failed"
+	end)
+end
+
 function F.boot()
 	touchFlag("boot", 30)
 	table.sort(F.stages, function(a, b) return a[3] < b[3] end)
@@ -501,12 +619,17 @@ function F.boot()
 		if not alive then return end
 		if BAN.set[name] or CFG.mods[name] == false then
 			MOD[name] = false
+			s.state = "off"
 		else
 			touchFlag(name, 30)
 			local ok, err = pcall(s[2])
 			if not ok then
+				s.state = "error"
 				noteErr("boot_" .. name .. ":" .. tostring(err))
 				warn("[AluzSpy] stage " .. name .. " failed: " .. tostring(err))
+				F.retryStage(s)
+			else
+				s.state = err == false and "unsupported" or "ok"
 			end
 			task.wait(0.12)
 		end

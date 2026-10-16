@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okHY, errHY = xpcall(function()
 	if not (F.job and F.fingerprint) then return end
 
@@ -63,17 +64,15 @@ local okHY, errHY = xpcall(function()
 			or head:find("not supported", 1, true) ~= nil or head:find("decompiler error", 1, true) ~= nil
 	end
 
-	D.queueScript = function(sc)
-		if not S.dump or D.sd[sc] or D.sdn >= 400 then return end
+	D.queueScript = function(sc, prio)
+		if not S.dump or not D.admit(sc, prio) then return end
 		if not CAP.decompile and not CAP.getscriptbytecode then return end
-		D.sd[sc] = true
-		D.sdn = D.sdn + 1
-		D.sq[#D.sq + 1] = sc
+		D.push(sc, prio)
 		if D.running then return end
 		D.running = true
 		task.spawn(function()
 			while alive and #D.sq > 0 do
-				local s = table.remove(D.sq, 1)
+				local s = D.pop()
 				local okn, nm = pcall(function() return s.Name end)
 				local okf, full = pcall(s.GetFullName, s)
 				full = okf and full or nil
@@ -83,6 +82,21 @@ local okHY, errHY = xpcall(function()
 				if CAP.getscriptbytecode then okb, bc = pcall(getscriptbytecode, s) end
 				local srcText = (res and res.ok and type(res.r) == "string" and #res.r >= 40 and not badText(res.r)) and res.r or nil
 				local bcOk = okb and type(bc) == "string" and #bc >= 16 and #bc <= 2097152
+				if not srcText then
+					local reason
+					if not CAP.decompile then
+						reason = "no_decompile_api"
+					elseif not res then
+						reason = "timeout"
+					elseif not res.ok then
+						reason = "error"
+					elseif type(res.r) ~= "string" or #res.r < 40 then
+						reason = "empty"
+					elseif badText(res.r) then
+						reason = "bad_output"
+					end
+					if reason then D.fails[full or name] = { reason = reason, bytecode = bcOk or nil } end
+				end
 				local entS, entB
 				if srcText then entS = D.add(srcText, "script_" .. name, full, nil) end
 				if bcOk and (pairMode[s] or not srcText) then entB = D.add(bc, "bytecode_" .. name, full, nil) end
@@ -99,7 +113,7 @@ local okHY, errHY = xpcall(function()
 
 	F.callerDump = function(sc)
 		pairMode[sc] = true
-		D.queueScript(sc)
+		D.queueScript(sc, 1)
 	end
 
 	function F.callGraph()
@@ -113,13 +127,22 @@ local okHY, errHY = xpcall(function()
 			for _, st in pairs(reg) do
 				out[#out + 1] = {
 					r = st.full, d = st.dir, calls = st.n + st.supp, peak = r2(st.peak),
-					spam = st.mutes > 0, scripts = map[st.nm],
+					spam = st.mutes > 0, scripts = map[st.nm] or (F.R and F.R.scriptsFor and F.R.scriptsFor(st.nm)),
 				}
 			end
 		end
 		table.sort(out, function(a, b) return a.calls > b.calls end)
 		for i = #out, 101, -1 do out[i] = nil end
 		return out
+	end
+
+	F.extra.dumpfail = function()
+		local n, items = 0, {}
+		for k, v in pairs(D.fails) do
+			n = n + 1
+			if n <= 100 then items[k] = v end
+		end
+		return { count = n, items = items }
 	end
 
 	F.api = F.api or {}

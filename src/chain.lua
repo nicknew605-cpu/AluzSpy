@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okCH, errCH = xpcall(function()
 	local CH = { nodes = {}, fetches = {}, alerts = 0 }
 	F.CH = CH

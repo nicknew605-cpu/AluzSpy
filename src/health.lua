@@ -1,7 +1,8 @@
+do local _ = "aluzspy@1.2.1-max" end
 local okH, errH = xpcall(function()
 	if not F.job then return end
 
-	local H = { status = {}, integrity = {}, reinstalls = 0, fallback = false, runs = 0, t = 0 }
+	local H = { status = {}, integrity = {}, reinstalls = 0, fallback = false, runs = 0, t = 0, per = {}, nextTry = {}, conflict = nil }
 	F.H = H
 	local lastHc = 0
 
@@ -78,6 +79,27 @@ local okH, errH = xpcall(function()
 		return out
 	end
 
+	local function canReinstall(name)
+		if (H.per[name] or 0) >= 3 then return false end
+		return clock() >= (H.nextTry[name] or 0)
+	end
+
+	local function noteReinstall(name)
+		H.per[name] = (H.per[name] or 0) + 1
+		H.reinstalls = H.reinstalls + 1
+		H.nextTry[name] = clock() + 20 * H.per[name]
+	end
+
+	local function conflictCheck()
+		if not (getrawmetatable and F.ncWrap and INST.nc) then return nil end
+		local ok, mt = pcall(getrawmetatable, game)
+		if not ok or not mt then return nil end
+		local cur = rawget(mt, "__namecall")
+		if cur == nil then return "missing" end
+		if cur ~= F.ncWrap then return "replaced" end
+		return nil
+	end
+
 	local function check()
 		if not alive or busy then return end
 		H.runs = H.runs + 1
@@ -88,15 +110,16 @@ local okH, errH = xpcall(function()
 		if INST.s2c and MOD.s2c and N.att > 0 then setStatus("s2c", true) end
 		H.integrity = integrity()
 		local nc2 = H.status.namecall
-		if nc2 and nc2.state == "failing" and H.reinstalls < 3 then
-			H.reinstalls = H.reinstalls + 1
+		H.conflict = conflictCheck()
+		if nc2 and nc2.state == "failing" and canReinstall("nc") then
+			noteReinstall("nc")
 			INST.nc = false
 			pcall(IN.nc)
 			nc2.miss = 0
 		end
 		local ls = H.status.loadstring
-		if ls and ls.state == "failing" and H.reinstalls < 3 then
-			H.reinstalls = H.reinstalls + 1
+		if ls and ls.state == "failing" and canReinstall("ls") then
+			noteReinstall("ls")
 			seenFn[genv.loadstring or loadstring] = nil
 			INST.ls = false
 			pcall(IN.ls)
@@ -131,7 +154,9 @@ local okH, errH = xpcall(function()
 				end
 				local old = rawget(mt, "__namecall")
 				if type(old) ~= "function" then error("no __namecall") end
-				rawset(mt, "__namecall", nc(F.ncHook))
+				local wrap = nc(F.ncHook)
+				F.ncWrap = wrap
+				rawset(mt, "__namecall", wrap)
 				oldNc = old
 				if setreadonly and ro then setreadonly(mt, true) end
 			end)
@@ -168,6 +193,7 @@ local okH, errH = xpcall(function()
 		for k, v in pairs(H.integrity) do
 			if v.exposed then out[#out + 1] = k .. " looks hooked if the game inspects it" end
 		end
+		if H.conflict then out[#out + 1] = "namecall " .. H.conflict .. " by another hook" end
 		table.sort(out)
 		return out
 	end
@@ -186,7 +212,7 @@ local okH, errH = xpcall(function()
 		return H
 	end
 	F.extra.health = function()
-		return { status = H.status, integrity = H.integrity, reinstalls = H.reinstalls, fallback = H.fallback, runs = H.runs }
+		return { status = H.status, integrity = H.integrity, reinstalls = H.reinstalls, per = H.per, fallback = H.fallback, runs = H.runs, conflict = H.conflict }
 	end
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()
