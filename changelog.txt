@@ -1,6 +1,74 @@
 Although it's a bit late, I've created it 😓
 
-Change log 1.2.1 Stable (Ultimate Update):
+Change log from 1.2.1 Stable to 1.2.1 Max:
+
+Fixes:
+
+dump2 no longer overwrites `CFG.decode` and `CFG.sandbox` on every start; your saved values are kept.
+
+deep no longer resets every module to "enabled" when the version changes. A new config migrator only adds missing keys and keeps your choices. `CFG.nc` is no longer forced on.
+
+decode: `F.api` is merged instead of replaced, so the load order cannot drop commands any more.
+
+decode: the variable renamer skips property names (`a.b`, `a:b`) and table keys, and skips names that also appear as strings.
+
+decode: sandbox with `net` now allows at most 3 fetches per run, 512 KB each, and refuses local and private hosts.
+
+runtime: `reload()` now points to `loader.lua`, and the frame budget follows the queue load.
+
+New modules:
+
+deobfuscate: constant string and number folding, `string.rep/reverse/sub/char`, `table.concat` and `bit32` folding, `a["b"]` to `a.b`, string table restoration, dead branch removal, literal comparison folding, scope-aware renaming and `loadstring` layer extraction. Every pass is checked and rolled back on failure. VM and dispatch structures are flagged in the report. Output goes to `*.deobf.lua`. Turn on automatic mode with `AluzSpy.set("autoDeobf", true)`.
+
+reverse: closure, constant, upvalue and prototype scan, remote to script links with confidence and evidence, callgraph, optional deep GC scan, and `AluzSpy.reverse()` plus `AluzSpy.reverseFind(text)`. The scan is limited by time and object count.
+
+vip: profiles (`lite`, `standard`, `max`, `safe`), one-click scan, report, redact and safe mode through `AluzSpy.vip(...)`.
+
+watch is now part of the load order. It provides the masking and schema helpers that save depends on. The `ps` and `tc` hooks stay off unless you enable them.
+
+Core:
+
+Observer pipeline `F.on(kind, name, fn, prio)` for modules that only need to watch events.
+
+Module registry and `AluzSpy.modules()`. Stages report their state and retry twice after an error.
+
+Job queue: priorities, timeouts, pause and cancel.
+
+Adaptive frame budget.
+
+Dump:
+
+Priority script queue: scripts that call remotes first, then the rest. The scan limit of 400 is kept, with a reserve for priority scripts.
+
+Decompile failures are recorded with a reason (timeout, error, empty, bad output).
+
+Hooks and health:
+
+Per-hook reinstall limits with backoff, plus conflict detection for `__namecall`.
+
+AI:
+
+`AluzSpy.protect(name)` keeps a remote from being quieted, and `AluzSpy.threshold(name, mult)` raises its thresholds.
+
+Save and UI:
+
+Session schema 6: `modules`, `deobf`, `reverse`, `vip`, `dumpfail` and `redaction`. Reports are redacted by default (`CFG.redact`). Set `CFG.redactIds` to also mask your player name and UserId.
+
+The counter shows `+` in the max profile, and the stats popup shows the profile and module count.
+
+Loader:
+
+Module manifest at `getgenv().AluzSpyManifest`, version guard, `getgenv().AluzSpyRef` to pin a branch, tag or commit, `getgenv().AluzSpyDisable` to skip optional modules, and a cache file per version.
+
+Loading order (src/): core, core2, dump, decode, dump2, deobfuscate, hooks, hooks2, deep, health, actor, ai, chain, watch, analysis, reverse, hybrid, vip, save, ui, runtime.
+
+Retain: hooks2, actor, chain (only the version marker line was added).
+
+Replace: core, core2, dump, decode, dump2, hooks, deep, health, ai, analysis, hybrid, watch, save, ui, runtime, loader.
+
+Create new: deobfuscate, reverse, vip.
+
+Change log from 1.2 Max (1.2.1 Beta) to 1.2.1 Stable:
 
 Menu: now simplified to just [ - ] [counter] [SAVE]; more compact than the previous version.
 
@@ -30,27 +98,18 @@ Smart deduplication: recognizes versions differing only by key or HWID. Detects 
 
 Hybrid dump: for scripts invoking remote calls, both source code and bytecode are saved and linked together.
 
-Improved obfuscator identification with detailed reasoning. Risk factors clearly explained: heavy VM usage, anti-tamper mechanisms, constant encryption, control-flow obfuscation, etc.
-
-Continuous hook health monitoring: test each hook every 20 seconds, auto-reinstall, and auto-reactivate temporarily interrupted hooks. The actor hook automatically detects duplicate logs and stops further injection.
-
-New in this update:
-
-AI engine fixed: the mute counter now works correctly, so spam remotes are truly suppressed instead of flooding the log buffer. The AI no longer goes "blind" after seeing many unique payloads, thanks to the new smart cache system.
-
-Anti-bypass remote hook: added direct closure hooks for `FireServer` and `InvokeServer`. Now captures remote calls even when scripts or anti-cheats avoid the `:` syntax and call `Remote.FireServer(Remote, ...)` directly.
-
-Safer hook health check: the old probe method could be detected or cleaned by some executors/anti-cheats, causing false "failing" states. Health checks now inspect the metatable closure directly, making auto-reinstall far more reliable.
-
-Deep scan upgraded: during deep-scan mode, dynamically decoded strings (from VM-style obfuscators) are monitored, so URLs and payloads revealed at runtime can be captured even when the source itself is virtualized.
-
-Dump indexing strengthened: improved hashing reduces false "seen before" and "variant" matches on large or heavily obfuscated scripts.
+Improved obfuscator identification with detailed reasoning. Risk factors clearly explained: heavy VM usage, anti-tamper mechanisms, constant encryption, control-flow obfuscation, etc. Continuous hook health monitoring: test each hook every 20 seconds, auto-reinstall, and auto-reactivate temporarily interrupted hooks. The actor hook automatically detects duplicate logs and stops further injection.
 
 Loading order (src/): core, core2, dump, decode, dump2, hooks, hooks2, deep, health, actor, ai, chain, analysis, hybrid, save, ui, runtime.
 
-Retain: dump, decode, hooks, ai, chain, analysis, hybrid, save, ui, runtime.
-Updated in this build: hooks2, health, deep, dump2.
+Retain: dump, decode, hooks, hooks2, ai.
 
-Got a bug? Send an email to nicknew605@gmail.com or join my newest Discord server 😶‍🌫️ 
+Move core2 and analysis from beta/ to src/ if applicable.
+
+Replace: dump2, health, actor, save, ui, runtime, loader.
+
+Create new: deep, chain, hybrid.
+
+Got a bug? Send an email to nicknew605@gmail.com or join my newest Discord server 😶‍🌫️
 
 https://discord.gg/5U4xD7qB6
