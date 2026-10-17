@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load core") end end
+do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load core") end end
 local SV = setmetatable({}, { __index = function(t, k)
 	local v = game:GetService(k)
 	rawset(t, k, v)
@@ -20,7 +20,7 @@ do
 	end
 end
 
-local VERSION = "1.2.2-beta"
+local VERSION = "1.2.2-max"
 local clock = os.clock
 local pack = table.pack
 local unpack = table.unpack or unpack
@@ -71,9 +71,9 @@ PATH.session = PATH.f("Save_" .. game.PlaceId .. "_" .. os.date("%Y%m%d_%H%M%S")
 PATH.tag = os.date("%H%M%S")
 
 local K = {
-	LOGCAP = 2500, BUCKET_MAX = 600, BUCKET_RATE = 360, ATT_CAP = 500, RF_CAP = 350,
-	DUMP_MAX = 500, DUMP_FILE_MAX = 12582912, DUMP_PEND_MAX = 37748736, DUMP_TOTAL = 100663296,
-	MEM_ABS = 2600, MEM_GROW = 1000, SCRIPT_CAP = 600, SCRIPT_RESERVE = 150,
+	LOGCAP = 4000, BUCKET_MAX = 800, BUCKET_RATE = 480, ATT_CAP = 800, RF_CAP = 500,
+	DUMP_MAX = 800, DUMP_FILE_MAX = 16777216, DUMP_PEND_MAX = 50331648, DUMP_TOTAL = 134217728,
+	MEM_ABS = 3000, MEM_GROW = 1200, SCRIPT_CAP = 800, SCRIPT_RESERVE = 200,
 }
 local QCAP, WIN = 3072, 1.2
 
@@ -246,17 +246,23 @@ do
 		local txt = FS.read(PATH.flag)
 		local stage = type(txt) == "string" and txt:match("^([%w%-_]+)") or nil
 		local ts = type(txt) == "string" and tonumber(txt:match("\n(%d+)")) or nil
-		if not ts or math.abs(os.time() - ts) < 1800 then
-			BAN.safe = true
-			for _, k in ipairs({ "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx" }) do BAN.set[k] = true end
+		if not ts or math.abs(os.time() - ts) < 900 then
+			-- 1.2.2-stable: soft recovery — only throttle the exact culprit once.
+			-- Do NOT ban the whole risk set (that left only s2c/fn alive).
 			local culprit = stage
 			if stage == "net-active" then culprit = "net" end
-			if culprit and culprit ~= "boot" then
-				BAN.set[culprit] = true
+			if stage == "nc" or stage == "namecall" then culprit = "nc" end
+			if culprit and culprit ~= "boot" and culprit ~= "net-active" then
 				CFG.crashes[culprit] = (CFG.crashes[culprit] or 0) + 1
-				if CFG.crashes[culprit] >= 2 then
+				-- only hard-disable after 3 crashes of the SAME module
+				if CFG.crashes[culprit] >= 3 then
 					CFG.mods[culprit] = false
+					BAN.set[culprit] = true
 					BAN.disabled[culprit] = true
+					BAN.safe = true
+				else
+					-- soft: delay install, still allow module
+					BAN.safe = false
 				end
 			end
 			X.recovered = { stage = stage or "?", age = ts and (os.time() - ts) or -1 }
@@ -544,7 +550,6 @@ function F.migrate()
 	for k, v in pairs(F.defMods) do
 		if CFG.mods[k] == nil then CFG.mods[k] = v end
 	end
-	-- 1.2.2-beta: force strong defaults when upgrading schema
 	if (CFG.schema or 0) < 4 then
 		CFG.decode = true
 		CFG.autoDeobf = true
@@ -609,7 +614,7 @@ function F.stage(name, prio, fn)
 end
 
 function F.boot()
-	touchFlag("boot", 30)
+	touchFlag("boot", 10)
 	table.sort(F.stages, function(a, b) return a[3] < b[3] end)
 	for i = 1, #F.stages do
 		local s = F.stages[i]
@@ -619,7 +624,7 @@ function F.boot()
 			MOD[name] = false
 			s.state = "off"
 		else
-			touchFlag(name, 30)
+			touchFlag(name, 10)
 			F.trace("stage " .. name .. " start")
 			local ok, err = pcall(s[2])
 			if not ok then

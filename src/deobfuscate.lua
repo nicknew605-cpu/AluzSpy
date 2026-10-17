@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load deobfuscate") end end
+do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load deobfuscate") end end
 local okDE, errDE = xpcall(function()
 	F.api = F.api or {}
 	if CFG.deob == nil then CFG.deob = true end

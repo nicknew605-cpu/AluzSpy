@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load hooks") end end
+do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load hooks") end end
 do
 	local HS = SV.HttpService
 	local INTEREST = {
@@ -139,8 +139,22 @@ do
 
 	local capCall, capSys, capNet = F.capCall, F.capSys, F.capNet
 
+	F.ncExtras = F.ncExtras or {}
+
 	function F.ncHook(self, ...)
 		local m = getnm()
+		-- run registered extras first (hx net/sys methods)
+		if alive and not busy and F.ncExtras then
+			for i = 1, #F.ncExtras do
+				local ex = F.ncExtras[i]
+				if ex and MOD[ex.mod] then
+					local handled, a, b, c, d, e, f = ex.fn(self, m, ...)
+					if handled then
+						return a, b, c, d, e, f
+					end
+				end
+			end
+		end
 		local kind = INTEREST[m]
 		if kind == nil or busy or not alive then
 			return oldNc(self, ...)
@@ -270,7 +284,7 @@ do
 			return true
 		end
 		if not (hookmetamethod and getnm) then return false end
-		touchFlag("nc", 30)
+		touchFlag("nc", 8)
 		local wrap = nc(F.ncHook)
 		F.ncWrap = wrap
 		local ok, old = pcall(hookmetamethod, game, "__namecall", wrap)

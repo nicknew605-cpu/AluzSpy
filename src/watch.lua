@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load watch") end end
+do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load watch") end end
 local okWT, errWT = xpcall(function()
 	F.api = F.api or {}
 	F.alerts = {}

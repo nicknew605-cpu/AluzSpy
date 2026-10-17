@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load hybrid") end end
+do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load hybrid") end end
 local okHY, errHY = xpcall(function()
 	if not (F.job and F.fingerprint) then return end
 

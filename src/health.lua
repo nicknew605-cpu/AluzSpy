@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load health") end end
+do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load health") end end
 local okH, errH = xpcall(function()
 	if not F.job then return end
 

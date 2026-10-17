@@ -1,7 +1,7 @@
-do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load save") end end
+do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load save") end end
 local okSV, errSV = xpcall(function()
 	CAP.save = true
-	F.register("save", { ver = "1.2.2-beta" })
+	F.register("save", { ver = "1.2.2-max" })
 
 	local CATS = {
 		{ "loader", "1. LOADER CHAIN" },
@@ -67,7 +67,7 @@ local okSV, errSV = xpcall(function()
 
 		local meta = {
 			tool = "Aluz Spy",
-			version = VERSION or "1.2.2-beta",
+			version = VERSION or "1.2.2-max",
 			executor = exec,
 			place = game.PlaceId,
 			job = game.JobId,
@@ -232,7 +232,6 @@ local okSV, errSV = xpcall(function()
 		return L
 	end
 
-	-- Assign the shared upvalue declared in core.lua (all modules are one chunk)
 	saveNow = function(reason)
 		reason = reason or "manual"
 		if not HAS_W then
@@ -262,11 +261,18 @@ local okSV, errSV = xpcall(function()
 		local wroteJson = js and FS.write(PATH.session, js)
 		local wroteTxt = FS.write(txtPath, body or "")
 
-		if wroteJson or wroteTxt then
+		local fullPath = nil
+		if type(D.writeFull) == "function" then
+			local okf, p = pcall(D.writeFull, reason)
+			if okf and type(p) == "string" then fullPath = p end
+		end
+
+		if wroteJson or wroteTxt or fullPath then
 			if F.notify then
-				F.notify("Saved " .. (PATH.session:match("[^/\\]+$") or PATH.session))
+				local msg = fullPath or PATH.session
+				F.notify("Saved " .. (tostring(msg):match("[^/\\]+$") or tostring(msg)))
 			end
-			return true, PATH.session
+			return true, fullPath or PATH.session
 		end
 		return false, "write failed"
 	end

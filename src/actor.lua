@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load actor") end end
+do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load actor") end end
 local okAC, errAC = xpcall(function()
 	if not F.job then return end
 

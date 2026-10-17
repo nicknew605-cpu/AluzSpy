@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load chain") end end
+do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load chain") end end
 local okCH, errCH = xpcall(function()
 	local CH = { nodes = {}, fetches = {}, alerts = 0 }
 	F.CH = CH

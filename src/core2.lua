@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load core2") end end
+do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load core2") end end
 local okC2, errC2 = xpcall(function()
 	F.extra = {}
 	F.extraChips = {}
@@ -16,14 +16,9 @@ local okC2, errC2 = xpcall(function()
 		if CFG.mods[n] == nil then CFG.mods[n] = true end
 	end
 	F.cfgLoad()
-	if BAN.safe then
-		for _, n in ipairs({ "ac", "sd" }) do
-			if not BAN.set[n] then
-				BAN.set[n] = true
-				BAN.list[#BAN.list + 1] = n
-			end
-		end
-		table.sort(BAN.list)
+	-- 1.2.3-vip: do not auto-ban ac/sd on soft recovery
+	if BAN.safe and BAN.disabled and next(BAN.disabled) then
+		-- only modules explicitly hard-disabled stay off
 	end
 
 	function F.ext()
