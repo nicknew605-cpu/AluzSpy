@@ -4,11 +4,15 @@ local okHX, errHX = xpcall(function()
 	F.defMods.hx = true
 	if CFG.mods.hx == nil then CFG.mods.hx = true end
 
+	local HX = { net = 0, sys = 0 }
 	local EXTRA = {
 		GetObjects = true, LoadAsset = true, LoadAssetVersion = true,
 		PromptPurchase = true, PromptProductPurchase = true, PromptGamePassPurchase = true,
 		PromptBundlePurchase = true, PromptPremiumPurchase = true, PromptSubscriptionPurchase = true,
 		PerformPurchase = true, OpenBrowserWindow = true, OpenNativeOverlay = true, PromptGameInvite = true,
+	}
+	local NETM = {
+		Http
 	}
 	local EXEC = { "firesignal", "fireclickdetector", "fireproximityprompt", "firetouchinterest", "replicatesignal" }
 
@@ -71,8 +75,24 @@ local okHX, errHX = xpcall(function()
 		local old
 		local ok, o = pcall(hookmetamethod, game, "__namecall", nc(function(self, ...)
 			local m = getnm()
-			if EXTRA[m] and MOD.hx and alive and not busy then
-				pcall(F.capSys, self, "x:" .. m, ...)
+			if MOD.hx and alive and not busy and m then
+				if NETM[m] then
+					setnm(m)
+					local r = pack(old(self, ...))
+					pcall(function()
+						local a = pack(...)
+						local url = a[1]
+						if type(url) == "table" then url = url.Url or url.url end
+						if F.capNet then F.capNet("nc:" .. tostring(m), url, m, r[1]) end
+						HX.net = HX.net + 1
+					end)
+					return unpack(r, 1, r.n)
+				elseif EXTRA[m] then
+					pcall(function()
+						if F.capSys then F.capSys(self, "x:" .. m, ...) end
+						HX.sys = HX.sys + 1
+					end)
+				end
 			end
 			setnm(m)
 			return old(self, ...)
@@ -88,6 +108,10 @@ local okHX, errHX = xpcall(function()
 	end
 
 	F.stage("hx", 13, IN.hx)
+
+	F.extra.hooks2 = function()
+		return { net = HX.net, sys = HX.sys, enabled = MOD.hx, installed = INST.hx }
+	end
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()
 end)
