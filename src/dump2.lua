@@ -1,9 +1,8 @@
 do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load dump2") end end
 local okD2, errD2 = xpcall(function()
 	F.api = F.api or {}
-	if CFG.decode == nil then CFG.decode = false end
-	if CFG.sandbox == nil then CFG.sandbox = false end
-
+	 if CFG.decode == nil then CFG.decode = true end
+if CFG.sandbox == nil then CFG.sandbox = false end
 	local STORE_MAX = 24 * 1024 * 1024
 	local byte = string.byte
 	D.store, D.spilled, D.storeBytes = {}, {}, 0
