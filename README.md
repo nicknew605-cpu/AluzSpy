@@ -10,7 +10,7 @@ It works well on Delta X, otherwise I don't know 😏
 
 [#script-features](#script-features)
 
-**Top 10 VIP Features – AluzSpy 1.2.1 Max**
+**Top 10 VIP Features – AluzSpy 1.2.2 Beta**
 
 1. **Single File Dump**  
 Everything is saved into one clean `Session_*.json` file instead of 30-40 separate files. Reports are schema 6 and include the module manifest, deobfuscation report, reverse map and VIP status.

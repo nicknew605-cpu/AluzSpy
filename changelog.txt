@@ -1,133 +1,53 @@
-Although it's a bit late, I've created it 😓
-
-Change log from 1.2.1 Stable to 1.2.1 Max:
-
-Hotfix (startup crash):
-
-watch.lua is no longer loaded. It was never part of the released load order and it replaced the net hook. The masking and redaction helpers now live in core2, so reports are still redacted.
-
-`CFG.decode` is off by default again. Fixing dump2 had made auto-decode run on every dumped script, which is heavy on mobile. Turn it on with `AluzSpy.set("decode", true)` or the max profile.
-
-Removed the automatic retry of failed hook stages, because re-running an installer could hook the same function twice.
-
-loader: files are downloaded by 6 parallel workers instead of all at once.
-
-core2: redaction only runs the rules that can match and skips the slowest scan on big reports, so saving a multi-MB session no longer freezes the game (about 15 times faster).
-
-Debug: set `getgenv().AluzSpyTrace = true` before the loader to write `AluzSpy/trace.log` with every module load and hook stage. After a crash, the last line shows where it stopped.
-
-core: one-time config migration (schema 3). A config saved by the earlier Max build with `decode` on is switched back to off. Your later choices are kept.
-
-health: a replaced `__namecall` is no longer counted as a warning, because the check can give false alarms on some executors.
-
-deobfuscate: `string.rep` with a separator is no longer folded, since Luau ignores that argument.
-
-Fixes:
-
-dump2 no longer overwrites `CFG.decode` and `CFG.sandbox` on every start; your saved values are kept.
-
-deep no longer resets every module to "enabled" when the version changes. A new config migrator only adds missing keys and keeps your choices. `CFG.nc` is no longer forced on.
-
-decode: `F.api` is merged instead of replaced, so the load order cannot drop commands any more.
-
-decode: the variable renamer skips property names (`a.b`, `a:b`) and table keys, and skips names that also appear as strings.
-
-decode: sandbox with `net` now allows at most 3 fetches per run, 512 KB each, and refuses local and private hosts.
-
-runtime: `reload()` now points to `loader.lua`, and the frame budget follows the queue load.
-
-New modules:
-
-deobfuscate: constant string and number folding, `string.rep/reverse/sub/char`, `table.concat` and `bit32` folding, `a["b"]` to `a.b`, string table restoration, dead branch removal, literal comparison folding, scope-aware renaming and `loadstring` layer extraction. Every pass is checked and rolled back on failure. VM and dispatch structures are flagged in the report. Output goes to `*.deobf.lua`. Turn on automatic mode with `AluzSpy.set("autoDeobf", true)`.
-
-reverse: closure, constant, upvalue and prototype scan, remote to script links with confidence and evidence, callgraph, optional deep GC scan, and `AluzSpy.reverse()` plus `AluzSpy.reverseFind(text)`. The scan is limited by time and object count.
-
-vip: profiles (`lite`, `standard`, `max`, `safe`), one-click scan, report, redact and safe mode through `AluzSpy.vip(...)`.
-
-Core:
-
-Observer pipeline `F.on(kind, name, fn, prio)` for modules that only need to watch events.
-
-Module registry and `AluzSpy.modules()`. Stages report their state.
-
-Job queue: priorities, timeouts, pause and cancel.
-
-Adaptive frame budget.
-
-Dump:
-
-Priority script queue: scripts that call remotes first, then the rest. The scan limit of 400 is kept, with a reserve for priority scripts.
-
-Decompile failures are recorded with a reason (timeout, error, empty, bad output).
-
-Hooks and health:
-
-Per-hook reinstall limits with backoff for `__namecall` and `loadstring`.
-
-AI:
-
-`AluzSpy.protect(name)` keeps a remote from being quieted, and `AluzSpy.threshold(name, mult)` raises its thresholds.
-
-Save and UI:
-
-Session schema 6: `modules`, `deobf`, `reverse`, `vip`, `dumpfail` and `redaction`. Reports are redacted by default (`CFG.redact`). Set `CFG.redactIds` to also mask your player name and UserId.
-
-The counter shows `+` in the max profile, and the stats popup shows the profile and module count.
-
-Loader:
-
-Module manifest at `getgenv().AluzSpyManifest`, version guard, `getgenv().AluzSpyRef` to pin a branch, tag or commit, `getgenv().AluzSpyDisable` to skip optional modules, and a cache file per version.
-
-Loading order (src/): core, core2, dump, decode, dump2, deobfuscate, hooks, hooks2, deep, health, actor, ai, chain, analysis, reverse, hybrid, vip, save, ui, runtime.
-
-Retain: hooks2, actor, chain, watch (not loaded).
-
-Replace: core, core2, dump, decode, dump2, hooks, deep, health, ai, analysis, hybrid, save, ui, runtime, loader.
-
-Create new: deobfuscate, reverse, vip.
-
-Change log from 1.2 Max (1.2.1 Beta) to 1.2.1 Stable:
-
-Menu: now simplified to just [ - ] [counter] [SAVE]; more compact than the previous version.
-
-Removed the NC button and chip panel.
-
-All modules activate automatically; the first run of this version resets all configurations to "enabled."
-
-Consolidated: clicking SAVE generates a `Session_<place>_<time>.txt` file with clearly organized sections (loader, UI lib, main script, game, bytecode, encrypted payload, critical remote calls, diff).
-
-Dumps are kept in RAM, eliminating the clutter of 30–40 separate files.
-
-To split files as before, call `AluzSpy.split(true)`.
-
-Crash protection: each dump is temporarily written to `AluzSpy/.spool`.
-
-If this file remains upon the next launch, the tool automatically consolidates it into `Recovered_*.txt`.
-
-Deep Dump: detects Luarmor, Luraph, MoonSec, IronBrew, etc., and activates a 60-second deep-scan mode. The tool retains the encrypted payload and performs a secondary scan.
-
-`loadstring` operations log execution results and new global variables.
-
-Stage tracking: visualizes the loading chain (loader → HttpGet → loadstring → ...) with status indicators (dumped vs. missing).
-
-Missing payload: provides alerts—e.g., "loaded but not executed," "loader VM lacks internal payload," or "UI lib present but feature code missing"—along with suggested next steps.
-
-Smart deduplication: recognizes versions differing only by key or HWID. Detects changes in URLs or `script_id` between runs and automatically generates a diff that includes structural changes.
-
-Hybrid dump: for scripts invoking remote calls, both source code and bytecode are saved and linked together.
-
-Improved obfuscator identification with detailed reasoning. Risk factors clearly explained: heavy VM usage, anti-tamper mechanisms, constant encryption, control-flow obfuscation, etc. Continuous hook health monitoring: test each hook every 20 seconds, auto-reinstall, and auto-reactivate temporarily interrupted hooks. The actor hook automatically detects duplicate logs and stops further injection.
-
-Loading order (src/): core, core2, dump, decode, dump2, hooks, hooks2, deep, health, actor, ai, chain, analysis, hybrid, save, ui, runtime.
-
-Retain: dump, decode, hooks, hooks2, ai.
-
-Move core2 and analysis from beta/ to src/ if applicable.
-
-Replace: dump2, health, actor, save, ui, runtime, loader.
-
-Create new: deep, chain, hybrid.
-
-Got a bug? Send an email to nicknew605@gmail.com or join my newest Discord server 😶‍🌫️
-
-https://discord.gg/5U4xD7qB6
+AluzSpy 1.2.2 Beta
+==================
+
+Upgrade path: 1.2.1 Max -> 1.2.2 Beta
+
+CRITICAL FIXES
+--------------
+* hooks2: no longer installs a second __namecall on top of hooks.lua.
+  Double namecall + s2c was the main crash when hx and s2c were both on.
+  hx now chains into F.ncHook when nc is already installed.
+* hooks2: fixed incomplete NETM table (was only { Http }).
+* save.lua: was corrupted on the public repo (duplicate of health.lua).
+  Fully rewritten — SAVE button, AluzSpy.save(), session JSON+TXT all work again.
+
+DUMP (stronger)
+---------------
+* More obfuscator fingerprints: Luarmor, Hercules, AstroProtect, PSU, Fluxus, VM, Bytecode, LPH_ variants.
+* Lower body accept threshold (16 bytes) so short loaders are still captured.
+* Capacity raised: DUMP_MAX 500, DUMP_FILE_MAX 12MB, DUMP_TOTAL ~96MB, LOGCAP 2500, ATT_CAP 500.
+* dumpmax: spill earlier (75% mem / 14MB store), more files per spill (40), faster interval (3s).
+* deep mode window 90s (was 60s), secondary GC/script scan at 15s.
+
+DEOBFUSCATE
+-----------
+* autoDeobf defaults to true in beta (still overridable).
+* dumpmax auto-queues every non-binary dump into the deobf pipeline when autoDeobf is on.
+
+HOOKS
+-----
+* hx + s2c + ac can all be on at the same time without the previous crash path.
+* Default mods: req enabled, profile default "max", decode/net/autoDeobf/autoReverse on.
+* Schema bumped to 4 so old configs migrate cleanly.
+
+VIP max profile
+---------------
+* net = true, dumpSpill = true, deob = true in addition to previous max flags.
+* scan() still runs: dump -> decode -> deobfAll -> reverse.
+
+SAVE
+----
+* Session writes Save_<place>_<time>.json (meta + dump index + log tail)
+  and matching .txt human report (summary, chain, missing/advice, modules, remotes).
+* Integrates deobf report, reverse summary, vip status, health.
+
+VERSION
+-------
+* All modules stamped aluzspy@1.2.2-beta / VERSION = "1.2.2-beta".
+* Cache file: AluzSpy/bundle_1.2.2-beta.lua
+
+Commands unchanged; prefer:
+  AluzSpy.vip("profile", "max")
+  AluzSpy.vip("scan")
+  AluzSpy.save()
