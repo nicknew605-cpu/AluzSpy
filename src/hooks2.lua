@@ -1,18 +1,21 @@
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load hooks2") end end
 local okHX, errHX = xpcall(function()
 	MOD.hx = false
 	INST.hx = false
 	F.defMods.hx = true
 	if CFG.mods.hx == nil then CFG.mods.hx = true end
 
-	local HX = { net = 0, sys = 0 }
+	local HX = { net = 0, sys = 0, chained = false }
 	local EXTRA = {
 		GetObjects = true, LoadAsset = true, LoadAssetVersion = true,
 		PromptPurchase = true, PromptProductPurchase = true, PromptGamePassPurchase = true,
 		PromptBundlePurchase = true, PromptPremiumPurchase = true, PromptSubscriptionPurchase = true,
 		PerformPurchase = true, OpenBrowserWindow = true, OpenNativeOverlay = true, PromptGameInvite = true,
 	}
+	-- Fixed incomplete NETM table (was just { Http } which is invalid / incomplete)
 	local NETM = {
-		Http
+		HttpGet = true, HttpGetAsync = true, HttpPost = true, HttpPostAsync = true,
+		GetAsync = true, PostAsync = true, RequestAsync = true,
 	}
 	local EXEC = { "firesignal", "fireclickdetector", "fireproximityprompt", "firetouchinterest", "replicatesignal" }
 
@@ -66,12 +69,59 @@ local okHX, errHX = xpcall(function()
 		end, false)
 	end
 
+	-- CRITICAL FIX: never install a second __namecall when hooks.lua already hooked it.
+	-- Double __namecall + s2c was the crash (s2c+hx together).
 	IN.hx = function()
 		if INST.hx then
 			MOD.hx = true
 			return true
 		end
 		if not (hookmetamethod and getnm) then return false end
+
+		-- Preferred path: chain into existing F.ncHook (installed by hooks.lua IN.nc)
+		if INST.nc and type(F.ncHook) == "function" and type(oldNc) == "function" then
+			local base = F.ncHook
+			F.ncHook = function(self, ...)
+				local m = getnm()
+				if MOD.hx and alive and not busy and m then
+					if NETM[m] then
+						setnm(m)
+						local r = pack(oldNc(self, ...))
+						pcall(function()
+							local a = pack(...)
+							local url = a[1]
+							if type(url) == "table" then url = url.Url or url.url end
+							if F.capNet then F.capNet("nc:" .. tostring(m), url, m, r[1]) end
+							HX.net = HX.net + 1
+						end)
+						return unpack(r, 1, r.n)
+					elseif EXTRA[m] then
+						pcall(function()
+							if F.capSys then F.capSys(self, "x:" .. m, ...) end
+							HX.sys = HX.sys + 1
+						end)
+					end
+				end
+				return base(self, ...)
+			end
+			-- refresh the live metamethod wrapper so the new F.ncHook is used
+			if F.ncWrap then
+				pcall(function()
+					local wrap = nc(F.ncHook)
+					F.ncWrap = wrap
+					hookmetamethod(game, "__namecall", wrap)
+				end)
+			end
+			HX.chained = true
+			INST.hx = true
+			MOD.hx = true
+			for i = 1, #EXEC do pcall(hookExec, EXEC[i]) end
+			pcall(hookFile, "loadfile")
+			pcall(hookFile, "dofile")
+			return true
+		end
+
+		-- Fallback only if nc was never installed (rare boot order)
 		local old
 		local ok, o = pcall(hookmetamethod, game, "__namecall", nc(function(self, ...)
 			local m = getnm()
@@ -99,6 +149,7 @@ local okHX, errHX = xpcall(function()
 		end))
 		if not ok or type(o) ~= "function" then return false end
 		old = o
+		if not oldNc then oldNc = o end
 		INST.hx = true
 		MOD.hx = true
 		for i = 1, #EXEC do pcall(hookExec, EXEC[i]) end
@@ -110,7 +161,7 @@ local okHX, errHX = xpcall(function()
 	F.stage("hx", 13, IN.hx)
 
 	F.extra.hooks2 = function()
-		return { net = HX.net, sys = HX.sys, enabled = MOD.hx, installed = INST.hx }
+		return { net = HX.net, sys = HX.sys, enabled = MOD.hx, installed = INST.hx, chained = HX.chained }
 	end
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()

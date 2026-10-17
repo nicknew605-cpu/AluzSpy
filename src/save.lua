@@ -1,197 +1,291 @@
-local okH, errH = xpcall(function()
-	if not F.job then return end
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load save") end end
+local okSV, errSV = xpcall(function()
+	CAP.save = true
+	F.register("save", { ver = "1.2.2-beta" })
 
-	local H = { status = {}, integrity = {}, reinstalls = 0, fallback = false, runs = 0, t = 0 }
-	F.H = H
-	local lastHc = 0
+	local CATS = {
+		{ "loader", "1. LOADER CHAIN" },
+		{ "ui", "2. UI LIBRARIES" },
+		{ "feature", "3. FEATURE / PROTECTED SCRIPTS" },
+		{ "game", "4. GAME SCRIPTS" },
+		{ "bytecode", "5. BYTECODE" },
+		{ "payload", "6. ENCRYPTED / RAW PAYLOADS" },
+		{ "other", "7. OTHER" },
+	}
 
-	local function setStatus(name, ok)
-		if ok == nil then return end
-		local s = H.status[name]
-		if not s then
-			s = { good = 0, bad = 0, miss = 0, state = "n/a" }
-			H.status[name] = s
+	local function section(P, title)
+		P[#P + 1] = ""
+		P[#P + 1] = "===== " .. title .. " ====="
+	end
+
+	local function collectRecs()
+		local recs = {}
+		for i = 1, #(D.list or {}) do
+			local e = D.list[i]
+			if e then
+				recs[#recs + 1] = {
+					id = e.id or e.hash or i,
+					cat = e.cat or "other",
+					tag = e.tag,
+					url = e.url,
+					len = e.len or (type(e.src) == "string" and #e.src) or 0,
+					hash = e.hash,
+					obf = e.obf,
+					file = e.file,
+					parent = e.parent,
+				}
+			end
 		end
-		if ok then
-			s.good = s.good + 1
-			s.miss = 0
-			s.state = "ok"
-		else
-			s.bad = s.bad + 1
-			s.miss = s.miss + 1
-			s.state = s.miss >= 2 and "failing" or "degraded"
+		return recs
+	end
+
+	local function spillStore()
+		if type(D.forceSpill) == "function" then
+			pcall(D.forceSpill, 40)
+		end
+		if D.q and D.h and D.t then
+			while D.h <= D.t do
+				local job = D.q[D.h]
+				D.h = D.h + 1
+				if job and job.f and job.s and HAS_W then
+					pcall(writefile, PATH.d(job.f), job.s)
+				end
+			end
 		end
 	end
 
-	local function probeEvent(form)
-		if not getrawmetatable then return true end
-		local ok, mt = pcall(getrawmetatable, game)
-		if not ok or not mt then return true end
-		local ncHook = rawget(mt, "__namecall")
-		if not ncHook then return false end
-		local isC = false
-		if iscclosure then pcall(function() isC = iscclosure(ncHook) end) end
-		return isC == false
-	end
-
-	local function probeLS()
-		local before = qt
-		local ok = pcall(loadstring, "return 41")
-		return ok and qt > before
-	end
-
-	local h7 = F.h[7]
-	F.h[7] = function(e, now)
-		if type(e.src) == "string" and e.src:find("aluz_hc", 1, true) then return end
-		if h7 then return h7(e, now) end
-	end
-
-	local function inspect(f)
-		if type(f) ~= "function" then return nil end
-		local r = {}
-		if iscclosure then
-			local ok, v = pcall(iscclosure, f)
-			if ok then r.c = v end
-		end
-		if debug and debug.info then
-			local ok, v = pcall(debug.info, f, "s")
-			if ok then r.src = v end
-		end
-		r.exposed = (r.src ~= nil and r.src ~= "[C]") or r.c == false
-		return r
-	end
-
-	local function integrity()
-		local out = {}
-		local function add(name, f)
-			local r = inspect(f)
-			if r then out[name] = r end
-		end
+	local function buildSession(reason)
+		spillStore()
+		local recs = collectRecs()
+		local exec = "unknown"
 		pcall(function()
-			add("FireServer", Instance.new("RemoteEvent").FireServer)
-			add("InvokeServer", Instance.new("RemoteFunction").InvokeServer)
-			add("Kick", LP.Kick)
+			if identifyexecutor then
+				local n, v = identifyexecutor()
+				exec = tostring(n) .. (v and (" " .. tostring(v)) or "")
+			end
 		end)
-		add("loadstring", genv.loadstring)
-		add("request", genv.request)
-		pcall(function() add("HttpGet", game.HttpGet) end)
-		return out
-	end
 
-	local function check()
-		if not alive or busy then return end
-		H.runs = H.runs + 1
-		H.t = os.time()
-		if INST.nc and S.nc and MOD.nc then setStatus("namecall", probeEvent("nc")) end
-		if INST.fn and S.nc and MOD.fn then setStatus("direct", probeEvent("fn")) end
-		if INST.ls and MOD.ls then setStatus("loadstring", probeLS()) end
-		if INST.s2c and MOD.s2c and N.att > 0 then setStatus("s2c", true) end
-		H.integrity = integrity()
-		local nc2 = H.status.namecall
-		if nc2 and nc2.state == "failing" and H.reinstalls < 3 then
-			H.reinstalls = H.reinstalls + 1
-			INST.nc = false
-			pcall(IN.nc)
-			nc2.miss = 0
+		local meta = {
+			tool = "Aluz Spy",
+			version = VERSION or "1.2.2-beta",
+			executor = exec,
+			place = game.PlaceId,
+			job = game.JobId,
+			exported = os.date("%Y-%m-%d %H:%M:%S"),
+			reason = reason or "manual",
+			session_file = PATH.session,
+			uptime = r2(clock() - T0),
+			safe_boot = BAN.safe,
+			banned = BAN.list,
+			recovered = X.recovered,
+			capabilities = CAP,
+			stats = F.stats and F.stats() or {
+				dumps = #D.list, bytes = D.bytes or 0,
+				calls = N.total, logged = N.logged, merged = N.merged,
+				supp = N.supp, remotes = N.remotes, errors = N.err,
+			},
+			categories = F.catSummary and F.catSummary() or nil,
+			missing = F.missing and F.missing() or nil,
+			health = F.extra and F.extra.health and F.extra.health() or nil,
+			modules = F.modules and F.modules() or nil,
+			vip = F.vipStatus and F.vipStatus() or nil,
+			deobf = F.deobfReport and F.deobfReport() or nil,
+			reverse = F.reverseSummary and F.reverseSummary() or nil,
+			ext = F.ext and F.ext() or nil,
+			last_errors = errMap,
+			split = CFG.split,
+			profile = CFG.profile,
+		}
+
+		local P = {}
+		P[#P + 1] = string.format(
+			"ALUZSPY SESSION  v%s  reason=%s  %s  place=%s  executor=%s",
+			tostring(meta.version), tostring(reason), meta.exported, tostring(game.PlaceId), exec
+		)
+		section(P, "SUMMARY")
+		if F.summaryLines then
+			for _, l in ipairs(F.summaryLines()) do P[#P + 1] = l end
+		else
+			local s = meta.stats
+			P[#P + 1] = string.format(
+				"dumps %d | bytes %d | calls %d | logged %d | merged %d | supp %d | remotes %d | err %d",
+				s.dumps or 0, s.bytes or 0, s.calls or 0, s.logged or 0,
+				s.merged or 0, s.supp or 0, s.remotes or 0, s.errors or 0
+			)
 		end
-		local ls = H.status.loadstring
-		if ls and ls.state == "failing" and H.reinstalls < 3 then
-			H.reinstalls = H.reinstalls + 1
-			seenFn[genv.loadstring or loadstring] = nil
-			INST.ls = false
-			pcall(IN.ls)
-			ls.miss = 0
+
+		section(P, "STAGE TRACKING (loading chain)")
+		if F.chainText then
+			for _, l in ipairs(F.chainText()) do P[#P + 1] = l end
+		else
+			P[#P + 1] = "(chain module not loaded)"
 		end
-		if X.tripped then
-			local now = clock()
-			for mod, t in pairs(X.tripped) do
-				if now - t > 60 then
-					faults[mod] = 0
-					if INST[mod] then MOD[mod] = true end
-					X.tripped[mod] = nil
+
+		section(P, "MISSING / ADVICE")
+		local miss = meta.missing or {}
+		if #miss == 0 then
+			P[#P + 1] = "none"
+		else
+			for _, m in ipairs(miss) do
+				P[#P + 1] = (m.sev or "?") .. " " .. (m.rule or "") .. ": " .. tostring(m.text)
+			end
+			if F.advice then
+				P[#P + 1] = "next steps:"
+				for _, a in ipairs(F.advice(miss) or {}) do
+					P[#P + 1] = "  - " .. a
 				end
 			end
 		end
-	end
 
-	local baseNc = IN.nc
-	if baseNc then
-		IN.nc = function()
-			local ok, res = pcall(baseNc)
-			if ok and res then return true end
-			if INST.nc then return false end
-			if not (getrawmetatable and getnm) then return false end
-			local okf = pcall(function()
-				local mt = getrawmetatable(game)
-				local ro = isreadonly and isreadonly(mt)
-				if setreadonly then
-					setreadonly(mt, false)
-				elseif make_writeable then
-					make_writeable(mt)
-				end
-				local old = rawget(mt, "__namecall")
-				if type(old) ~= "function" then error("no __namecall") end
-				rawset(mt, "__namecall", nc(F.ncHook))
-				oldNc = old
-				if setreadonly and ro then setreadonly(mt, true) end
-			end)
-			if okf then
-				INST.nc = true
-				MOD.nc = true
-				H.fallback = true
-				return true
+		section(P, "MODULES")
+		if meta.modules then
+			local js = F.enc(meta.modules)
+			P[#P + 1] = js and js:sub(1, 4000) or tostring(meta.modules)
+		end
+
+		section(P, "DUMP INDEX")
+		for _, c in ipairs(CATS) do
+			local list = {}
+			for _, e in ipairs(recs) do
+				if (e.cat or "other") == c[1] then list[#list + 1] = e end
 			end
-			return false
+			if #list > 0 then
+				P[#P + 1] = ""
+				P[#P + 1] = c[2] .. " (" .. #list .. ")"
+				for i = 1, math.min(#list, 80) do
+					local e = list[i]
+					P[#P + 1] = string.format(
+						"  [%s] %s  len=%s  tag=%s  url=%s",
+						tostring(e.id):sub(1, 12),
+						tostring(e.hash or ""):sub(1, 16),
+						tostring(e.len),
+						tostring(e.tag or ""),
+						tostring(e.url or ""):sub(1, 80)
+					)
+				end
+				if #list > 80 then
+					P[#P + 1] = "  ... +" .. (#list - 80) .. " more"
+				end
+			end
 		end
+
+		section(P, "REMOTE LOG TAIL")
+		local shown = 0
+		for s = N.seq, math.max(1, N.seq - 60), -1 do
+			local r = logs[(s - 1) % K.LOGCAP + 1]
+			if r and r.i == s then
+				shown = shown + 1
+				P[#P + 1] = string.format(
+					"#%d %s %s.%s n=%s a=%s",
+					r.i, tostring(r.d), tostring(r.r), tostring(r.m),
+					tostring(r.n), table.concat(r.a or {}, " | "):sub(1, 200)
+				)
+			end
+		end
+		if shown == 0 then P[#P + 1] = "(no remote logs yet)" end
+
+		local sessionJson = {
+			meta = meta,
+			dumps = recs,
+			logs_tail = {},
+		}
+		for s = N.seq, math.max(1, N.seq - 120), -1 do
+			local r = logs[(s - 1) % K.LOGCAP + 1]
+			if r and r.i == s then
+				sessionJson.logs_tail[#sessionJson.logs_tail + 1] = {
+					i = r.i, t = r.t, d = r.d, r = r.r, m = r.m, n = r.n, a = r.a, code = r.code,
+				}
+			end
+		end
+
+		return table.concat(P, "\n"), sessionJson
 	end
 
-	IN.hc = function()
-		MOD.hc = true
-		INST.hc = true
-		task.delay(5, check)
-		return true
-	end
-	F.stage("hc", 90, IN.hc)
-
-	F.onTick(function(now)
-		if now - lastHc >= 20 then
-			lastHc = now
-			task.defer(check)
+	function F.summaryLines()
+		local L = {}
+		local s = F.stats and F.stats() or {}
+		L[#L + 1] = string.format(
+			"calls %d | logged %d | merged %d | suppressed %d | remotes %d | errors %d",
+			s.calls or N.total, s.logged or N.logged, s.merged or N.merged,
+			s.supp or N.supp, s.remotes or N.remotes, s.errors or N.err
+		)
+		L[#L + 1] = string.format(
+			"dumps %d | bytes %s | uptime %.1fs | profile %s",
+			#D.list, tostring(D.bytes or 0), clock() - T0, tostring(CFG.profile)
+		)
+		local cs = F.catSummary and F.catSummary() or {}
+		local parts = {}
+		for _, c in ipairs(CATS) do
+			if cs[c[1]] then parts[#parts + 1] = c[1] .. "=" .. cs[c[1]] end
 		end
-	end)
-
-	function F.weakHooks()
-		local out = {}
-		for k, s in pairs(H.status) do
-			if s.state == "degraded" or s.state == "failing" then out[#out + 1] = k .. " " .. s.state end
-		end
-		for k, v in pairs(H.integrity) do
-			if v.exposed then out[#out + 1] = k .. " looks hooked if the game inspects it" end
-		end
-		table.sort(out)
-		return out
+		if #parts > 0 then L[#L + 1] = "cats: " .. table.concat(parts, " ") end
+		if F.vipLine then L[#L + 1] = "vip: " .. F.vipLine() end
+		if F.hookLine then L[#L + 1] = "hooks: " .. F.hookLine() end
+		return L
 	end
 
-	function F.hookLine()
-		local t = {}
-		for k, s in pairs(H.status) do t[#t + 1] = k:sub(1, 3) .. ":" .. s.state:sub(1, 1) end
-		table.sort(t)
-		return #t > 0 and table.concat(t, " ") or "checking"
+	function F.report()
+		local L = F.summaryLines()
+		for i = 1, math.min(#L, 40) do
+			warn("[AluzSpy] " .. L[i])
+		end
+		return L
+	end
+
+	-- Assign the shared upvalue declared in core.lua (all modules are one chunk)
+	saveNow = function(reason)
+		reason = reason or "manual"
+		if not HAS_W then
+			return false, "no writefile"
+		end
+		local ok, packRes = pcall(function()
+			local t, j = buildSession(reason)
+			return { t, j }
+		end)
+		if not ok then
+			N.err = N.err + 1
+			errMap["save"] = tostring(packRes)
+			return false, tostring(packRes)
+		end
+		local body = packRes[1]
+		local meta = packRes[2]
+
+		PATH.session = PATH.f("Save_" .. game.PlaceId .. "_" .. os.date("%Y%m%d_%H%M%S") .. ".json")
+		local txtPath = PATH.session:gsub("%.json$", ".txt")
+
+		local js = F.enc(meta)
+		if CFG.redact and F.redact and type(js) == "string" then
+			local okr, r = pcall(F.redact, js)
+			if okr and type(r) == "string" then js = r end
+		end
+
+		local wroteJson = js and FS.write(PATH.session, js)
+		local wroteTxt = FS.write(txtPath, body or "")
+
+		if wroteJson or wroteTxt then
+			if F.notify then
+				F.notify("Saved " .. (PATH.session:match("[^/\\]+$") or PATH.session))
+			end
+			return true, PATH.session
+		end
+		return false, "write failed"
 	end
 
 	F.api = F.api or {}
-	F.api.health = function()
-		check()
-		warn("[AluzSpy] health: " .. tostring(F.enc({ status = H.status, reinstalls = H.reinstalls, fallback = H.fallback })))
-		return H
+	F.api.save = function()
+		local ok, res = saveNow("manual")
+		warn("[AluzSpy] save: " .. tostring(ok) .. " " .. tostring(res))
+		return ok, res
 	end
-	F.extra.health = function()
-		return { status = H.status, integrity = H.integrity, reinstalls = H.reinstalls, fallback = H.fallback, runs = H.runs }
+	F.api.report = F.report
+
+	F.extra.save = function()
+		return { session = PATH.session, hasWrite = HAS_W }
 	end
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()
 end)
 
-if not okH then
-	warn("[AluzSpy] health failed: " .. tostring(errH))
+if not okSV then
+	warn("[AluzSpy] save module error: " .. tostring(errSV))
 end

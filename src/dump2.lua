@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load dump2") end end
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load dump2") end end
 local okD2, errD2 = xpcall(function()
 	F.api = F.api or {}
 	 if CFG.decode == nil then CFG.decode = true end

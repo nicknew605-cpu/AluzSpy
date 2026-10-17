@@ -1,6 +1,7 @@
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load dumpmax") end end
 local okDM, errDM = xpcall(function()
 	if type(D) ~= "table" or type(D.add) ~= "function" then return end
-	if CFG.autoDeobf == nil then CFG.autoDeobf = false end
+	if CFG.autoDeobf == nil then CFG.autoDeobf = true end
 	if CFG.dumpSpill == nil then CFG.dumpSpill = true end
 
 	local DM = { spilled = 0, auto = 0 }
@@ -22,7 +23,7 @@ local okDM, errDM = xpcall(function()
 
 	function D.forceSpill(limit)
 		if not HAS_W then return 0 end
-		limit = tonumber(limit) or 20
+		limit = tonumber(limit) or 40
 		local n = 0
 		for f, s in pairs(D.store or {}) do
 			if n >= limit then break end
@@ -42,10 +43,10 @@ local okDM, errDM = xpcall(function()
 	local lastSpill = 0
 	F.onTick(function(now)
 		if not CFG.dumpSpill then return end
-		if now - lastSpill < 5 then return end
-		if X.memNow > K.MEM_ABS * 0.82 or (D.storeBytes or 0) > 18 * 1024 * 1024 then
+		if now - lastSpill < 3 then return end
+		if X.memNow > K.MEM_ABS * 0.75 or (D.storeBytes or 0) > 14 * 1024 * 1024 then
 			lastSpill = now
-			task.defer(D.forceSpill, 10)
+			task.defer(D.forceSpill, 20)
 		end
 	end)
 

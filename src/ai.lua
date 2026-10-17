@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load ai") end end
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load ai") end end
 do
 	local SAMPLE = { 6, 12, 24 }
 	local FLOOD = { 70, 40, 25 }

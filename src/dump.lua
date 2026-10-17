@@ -1,9 +1,18 @@
-do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load dump") end end
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load dump") end end
 do
 	local OBF = {
-		{ "Luraph", "Luraph" }, { "LPH[%$%~%@%|]", "Luraph" }, { "MoonSec", "MoonSec" },
-		{ "IronBrew", "IronBrew" }, { "Prometheus", "Prometheus" }, { "Synapse Xen", "SynapseXen" },
-		{ "WeAreDevs", "WeAreDevs" }, { "Boronide", "Boronide" }, { "Aztup", "AztupBrew" },
+		{ "Luraph", "Luraph" }, { "LPH[%$%~%@%|]", "Luraph" }, { "LPH_", "Luraph" },
+		{ "MoonSec", "MoonSec" }, { "Moon%-?Sec", "MoonSec" },
+		{ "IronBrew", "IronBrew" }, { "IronBrewV%d", "IronBrew" },
+		{ "Prometheus", "Prometheus" }, { "PSU_CRYPT", "Prometheus" },
+		{ "Synapse Xen", "SynapseXen" }, { "SynapseXen", "SynapseXen" },
+		{ "WeAreDevs", "WeAreDevs" }, { "Boronide", "Boronide" },
+		{ "Aztup", "AztupBrew" }, { "AztupBrew", "AztupBrew" },
+		{ "Luarmor", "Luarmor" }, { "script_key", "Luarmor" },
+		{ "Hercules", "Hercules" }, { "AstroProtect", "AstroProtect" },
+		{ "PSU_LOADER", "PSU" }, { "Fluxus", "Fluxus" },
+		{ "Xor%d%d", "XorVM" }, { "vm_execute", "VM" },
+		{ "bytecode", "Bytecode" }, { "string%.dump", "Bytecode" },
 	}
 
 	local function domain(url)
@@ -26,7 +35,7 @@ do
 	end
 
 	function D.looks(body, url)
-		if #body < 24 then return false end
+		if #body < 16 then return false end
 		local c = body:sub(1, 1)
 		if c == "{" or c == "[" or c == "<" then return false end
 		if url and url:lower():find("%.lua") then return true end

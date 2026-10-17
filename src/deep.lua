@@ -3,8 +3,8 @@ local okDP, errDP = xpcall(function()
 	if CFG.split == nil then CFG.split = false end
 	F.cfgLoad()
 	F.defMods.req = true
-	if CFG.ver ~= "1.2.1-max" then
-		CFG.ver = "1.2.1-max"
+	if CFG.ver ~= "1.2.2-beta" then
+		CFG.ver = "1.2.2-beta"
 		for k in pairs(F.defMods) do CFG.mods[k] = true end
 		F.cfgSave()
 	end
@@ -24,12 +24,12 @@ local okDP, errDP = xpcall(function()
 	end
 
 	function F.deepOn(why)
-		DP.untilT = clock() + 60
+		DP.untilT = clock() + 90
 		DP.hits = DP.hits + 1
 		if #DP.why < 12 then DP.why[#DP.why + 1] = why end
 		if not DP.second then
 			DP.second = true
-			task.delay(20, function()
+			task.delay(15, function()
 				if not alive then return end
 				if F.gcMap then pcall(F.gcMap, false) end
 				if F.scriptDiff then pcall(F.scriptDiff) end

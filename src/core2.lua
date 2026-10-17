@@ -1,3 +1,4 @@
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load core2") end end
 local okC2, errC2 = xpcall(function()
 	F.extra = {}
 	F.extraChips = {}

@@ -1,7 +1,7 @@
-do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load vip") end end
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load vip") end end
 local okVP, errVP = xpcall(function()
 	CAP.vip = true
-	F.register("vip", { ver = "1.2.1-max" })
+	F.register("vip", { ver = "1.2.2-beta" })
 
 	local RISK = { "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx", "ac", "sd", "ps", "tc" }
 	local ALL = { "fn", "s2c", "sys", "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx", "ac", "hc", "sd", "ps", "tc" }
@@ -24,7 +24,7 @@ local okVP, errVP = xpcall(function()
 		},
 		max = {
 			mods = modset(true, { "ps", "tc" }),
-			cfg = { decode = true, sandbox = false, net = false, autoDeobf = true, autoReverse = true, autoScripts = true, callerDump = true, code = true, tree = true },
+			cfg = { decode = true, sandbox = false, net = true, autoDeobf = true, autoReverse = true, autoScripts = true, callerDump = true, code = true, tree = true, dumpSpill = true, deob = true },
 		},
 		safe = {
 			mods = (function()

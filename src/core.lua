@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load core") end end
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load core") end end
 local SV = setmetatable({}, { __index = function(t, k)
 	local v = game:GetService(k)
 	rawset(t, k, v)
@@ -20,7 +20,7 @@ do
 	end
 end
 
-local VERSION = "1.2.1-max"
+local VERSION = "1.2.2-beta"
 local clock = os.clock
 local pack = table.pack
 local unpack = table.unpack or unpack
@@ -71,9 +71,9 @@ PATH.session = PATH.f("Save_" .. game.PlaceId .. "_" .. os.date("%Y%m%d_%H%M%S")
 PATH.tag = os.date("%H%M%S")
 
 local K = {
-	LOGCAP = 1500, BUCKET_MAX = 400, BUCKET_RATE = 240, ATT_CAP = 300, RF_CAP = 200,
-	DUMP_MAX = 300, DUMP_FILE_MAX = 8388608, DUMP_PEND_MAX = 25165824, DUMP_TOTAL = 67108864,
-	MEM_ABS = 2200, MEM_GROW = 800, SCRIPT_CAP = 400, SCRIPT_RESERVE = 100,
+	LOGCAP = 2500, BUCKET_MAX = 600, BUCKET_RATE = 360, ATT_CAP = 500, RF_CAP = 350,
+	DUMP_MAX = 500, DUMP_FILE_MAX = 12582912, DUMP_PEND_MAX = 37748736, DUMP_TOTAL = 100663296,
+	MEM_ABS = 2600, MEM_GROW = 1000, SCRIPT_CAP = 600, SCRIPT_RESERVE = 150,
 }
 local QCAP, WIN = 3072, 1.2
 
@@ -84,9 +84,9 @@ for _, n in ipairs({ "nc", "fn", "s2c", "sys", "net", "http", "ls", "cb", "ni", 
 	INST[n] = false
 end
 local CFG = {
-	nc = true, dump = true, code = true, tree = true, callerDump = true, autoScripts = false, update = true,
-	decode = false, sandbox = false, net = false,
-	schema = 3, ver = "", profile = "standard", autoDeobf = false, autoReverse = false,
+	nc = true, dump = true, code = true, tree = true, callerDump = true, autoScripts = true, update = true,
+	decode = true, sandbox = false, net = true,
+	schema = 4, ver = "", profile = "max", autoDeobf = true, autoReverse = true,
 	redact = true, redactIds = false, protected = {}, thr = {},
 	mods = {}, crashes = {},
 }
@@ -128,7 +128,7 @@ local IN = {}
 local OBS, REG = {}, {}
 local F = { h = {}, ticks = {}, stages = {}, defMods = {
 	fn = true, s2c = true, sys = true, net = true, http = true, ls = true, cb = true, ni = true, rw = true, ws = true,
-	req = false, hx = true,
+	req = true, hx = true,
 } }
 
 for k, v in pairs(F.defMods) do CFG.mods[k] = v end
@@ -539,18 +539,21 @@ function F.apiMerge(t)
 end
 
 function F.migrate()
-	if CFG.ver == VERSION and (CFG.schema or 0) >= 3 then return nil end
+	if CFG.ver == VERSION and (CFG.schema or 0) >= 4 then return nil end
 	local prev = CFG.ver
 	for k, v in pairs(F.defMods) do
 		if CFG.mods[k] == nil then CFG.mods[k] = v end
 	end
-	if prev == VERSION and (CFG.schema or 0) < 3 then
-		CFG.decode = false
-		CFG.autoDeobf = false
-		CFG.autoReverse = false
+	-- 1.2.2-beta: force strong defaults when upgrading schema
+	if (CFG.schema or 0) < 4 then
+		CFG.decode = true
+		CFG.autoDeobf = true
+		CFG.autoReverse = true
+		CFG.net = true
+		CFG.profile = CFG.profile or "max"
 	end
 	CFG.ver = VERSION
-	CFG.schema = 3
+	CFG.schema = 4
 	F.cfgSave()
 	return prev
 end

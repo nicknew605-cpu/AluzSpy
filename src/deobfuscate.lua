@@ -1,7 +1,8 @@
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load deobfuscate") end end
 local okDE, errDE = xpcall(function()
 	F.api = F.api or {}
 	if CFG.deob == nil then CFG.deob = true end
-	if CFG.autoDeobf == nil then CFG.autoDeobf = false end
+	if CFG.autoDeobf == nil then CFG.autoDeobf = true end
 	F.deob = F.deob or {}
 	local DE = F.deob
 	DE.stats = { runs = 0, ok = 0, fail = 0, strings = 0, urls = 0, flags = 0, layers = 0, auto = 0 }

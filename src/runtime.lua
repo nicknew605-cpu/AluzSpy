@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load runtime") end end
+do local _ = "aluzspy@1.2.2-beta" if F and F.trace then F.trace("load runtime") end end
 local okRT, errRT = xpcall(function()
 	local LOADER = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/refs/heads/main/loader.lua"
 
