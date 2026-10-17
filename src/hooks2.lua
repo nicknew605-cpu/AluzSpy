@@ -1,4 +1,3 @@
-do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load hooks2") end end
 local okHX, errHX = xpcall(function()
 	MOD.hx = false
 	INST.hx = false
@@ -87,40 +86,6 @@ local okHX, errHX = xpcall(function()
 		pcall(hookFile, "dofile")
 		return true
 	end
-
-	local function hookDirectRemotes()
-		if not hookfunction then return end
-		local okRE, re = pcall(Instance.new, "RemoteEvent")
-		local okRF, rf = pcall(Instance.new, "RemoteFunction")
-		if okRE and re.FireServer then
-			F.hookWith(re.FireServer, function(holder)
-				local old = holder.old
-				return nc(function(self, ...)
-					if MOD.fn and alive and not busy and typeof(self) == "Instance" then
-						enqueue({ k = 1, d = "C2S", s = self, m = "FireServer", a = pack(...), t = clock(), ex = ckc() })
-					end
-					return old(self, ...)
-				end)
-			end, true)
-		end
-		if okRF and rf.InvokeServer then
-			F.hookWith(rf.InvokeServer, function(holder)
-				local old = holder.old
-				return nc(function(self, ...)
-					if MOD.fn and alive and not busy and typeof(self) == "Instance" then
-						local a = pack(...)
-						local ent = enqueue({ k = 1, d = "C2S", s = self, m = "InvokeServer", a = a, t = clock(), ex = ckc() })
-						setnm("InvokeServer")
-						local r = pack(old(self, ...))
-						if ent then enqueue({ k = 2, r = ent, v = r }) end
-						return unpack(r, 1, r.n)
-					end
-					return old(self, ...)
-				end)
-			end, true)
-		end
-	end
-	pcall(hookDirectRemotes)
 
 	F.stage("hx", 13, IN.hx)
 end, function(e)
