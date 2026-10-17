@@ -1,4 +1,4 @@
-local VERSION = "1.2.2-beta"
+local VERSION = "1.2.2-max"
 local ENV = (type(getgenv) == "function" and getgenv()) or _G
 local REF = (type(ENV.AluzSpyRef) == "string" and ENV.AluzSpyRef ~= "") and ENV.AluzSpyRef or "main"
 local ROOT = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/" .. REF .. "/src/"

@@ -1,53 +1,34 @@
-AluzSpy 1.2.2 Beta
-==================
+AluzSpy 1.2.2 Max
 
-Upgrade path: 1.2.1 Max -> 1.2.2 Beta
+CRITICAL
+- Single __namecall only (hooks.lua). hooks2 chains via F.ncExtras — no double hook, no crash with s2c+hx+nc
+- Soft recovery: hard-disable a module only after 3 crashes of that module; no mass-ban of net/http/ls/hx
+- save.lua rewritten (repo copy was broken). SAVE works again
+- FullScripts_<place>_<time>.lua on every save — one file, all captured script sources
 
-CRITICAL FIXES
---------------
-* hooks2: no longer installs a second __namecall on top of hooks.lua.
-  Double namecall + s2c was the main crash when hx and s2c were both on.
-  hx now chains into F.ncHook when nc is already installed.
-* hooks2: fixed incomplete NETM table (was only { Http }).
-* save.lua: was corrupted on the public repo (duplicate of health.lua).
-  Fully rewritten — SAVE button, AluzSpy.save(), session JSON+TXT all work again.
+DUMP
+- DUMP_MAX 800, file 16MB, total 128MB, LOGCAP 4000, ATT_CAP 800, SCRIPT_CAP 800
+- Deep window 120s
+- dumpmax spill aggressive (2s / 60 files)
+- Obfuscator fingerprints: Luarmor Luraph MoonSec IronBrew Prometheus PSU Hercules AstroProtect Fluxus VM Bytecode
+- AluzSpy.fullDump() API
 
-DUMP (stronger)
----------------
-* More obfuscator fingerprints: Luarmor, Hercules, AstroProtect, PSU, Fluxus, VM, Bytecode, LPH_ variants.
-* Lower body accept threshold (16 bytes) so short loaders are still captured.
-* Capacity raised: DUMP_MAX 500, DUMP_FILE_MAX 12MB, DUMP_TOTAL ~96MB, LOGCAP 2500, ATT_CAP 500.
-* dumpmax: spill earlier (75% mem / 14MB store), more files per spill (40), faster interval (3s).
-* deep mode window 90s (was 60s), secondary GC/script scan at 15s.
+HOOK
+- nc + fn + s2c + sys + hx + ac together
+- hx: HttpGet/Post/GetAsync/RequestAsync + GetObjects/LoadAsset/purchases via ncExtras
+- firesignal loadfile dofile hooked
+- Anti-bypass FireServer/InvokeServer via hookfunction
 
-DEOBFUSCATE
------------
-* autoDeobf defaults to true in beta (still overridable).
-* dumpmax auto-queues every non-binary dump into the deobf pipeline when autoDeobf is on.
+DEOBF
+- autoDeobf default on
+- dumpmax auto-queues non-binary dumps into deobf pipeline
 
-HOOKS
------
-* hx + s2c + ac can all be on at the same time without the previous crash path.
-* Default mods: req enabled, profile default "max", decode/net/autoDeobf/autoReverse on.
-* Schema bumped to 4 so old configs migrate cleanly.
+VIP max
+- decode net autoDeobf autoReverse autoScripts callerDump code tree dumpSpill deob nc
 
-VIP max profile
----------------
-* net = true, dumpSpill = true, deob = true in addition to previous max flags.
-* scan() still runs: dump -> decode -> deobfAll -> reverse.
-
-SAVE
-----
-* Session writes Save_<place>_<time>.json (meta + dump index + log tail)
-  and matching .txt human report (summary, chain, missing/advice, modules, remotes).
-* Integrates deobf report, reverse summary, vip status, health.
+CLEAN
+- Delete AluzSpy/config.json and AluzSpy/.boot before first load of this build
+- AluzSpy.vip("profile","max") then AluzSpy.save()
 
 VERSION
--------
-* All modules stamped aluzspy@1.2.2-beta / VERSION = "1.2.2-beta".
-* Cache file: AluzSpy/bundle_1.2.2-beta.lua
-
-Commands unchanged; prefer:
-  AluzSpy.vip("profile", "max")
-  AluzSpy.vip("scan")
-  AluzSpy.save()
+- 1.2.2-max / aluzspy@1.2.2-max
