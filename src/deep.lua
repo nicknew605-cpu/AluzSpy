@@ -1,11 +1,14 @@
-do local _ = "aluzspy@1.2.1-max" if F and F.trace then F.trace("load deep") end end
 local okDP, errDP = xpcall(function()
 	if CFG.ver == nil then CFG.ver = "" end
 	if CFG.split == nil then CFG.split = false end
 	F.cfgLoad()
 	F.defMods.req = true
-	if CFG.ver == "" then CFG.mods.req = true end
-	F.migrate()
+	if CFG.ver ~= "1.2.1-max" then
+		CFG.ver = "1.2.1-max"
+		for k in pairs(F.defMods) do CFG.mods[k] = true end
+		F.cfgSave()
+	end
+	CFG.nc = true
 
 	local DP = { untilT = 0, hits = 0, why = {}, second = false }
 	F.deep = DP
@@ -156,20 +159,7 @@ local okDP, errDP = xpcall(function()
 			if seenReq[e.s] then return end
 			seenReq[e.s] = true
 		end
-		return h4(e, now)
-	end
-
-	if type(hookfunction) == "function" then
-		local oldChar = string.char
-		pcall(hookfunction, string.char, nc(function(...)
-			local s = oldChar(...)
-			if #s > 0 and MOD.ls and F.deepActive and F.deepActive() then
-				if s:find("http", 1, true) or s:find("discord", 1, true) or s:find("api", 1, true) then
-					pcall(F.capSrc, "vm_decrypt_url", s, X.chunk, nil, nil)
-				end
-			end
-			return s
-		end))
+		if h4 then return h4(e, now) end
 	end
 
 	F.extra.deep = function()
