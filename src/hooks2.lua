@@ -4,18 +4,7 @@ local okHX, errHX = xpcall(function()
 	INST.hx = false
 	F.defMods.hx = true
 	if CFG.mods.hx == nil then CFG.mods.hx = true end
-	local HX = { net = 0, sys = 0, mode = "chain" }
-	local EXTRA = {
-		GetObjects = true, LoadAsset = true, LoadAssetVersion = true,
-		PromptPurchase = true, PromptProductPurchase = true, PromptGamePassPurchase = true,
-		PromptBundlePurchase = true, PromptPremiumPurchase = true, PromptSubscriptionPurchase = true,
-		PerformPurchase = true, OpenBrowserWindow = true, OpenNativeOverlay = true, PromptGameInvite = true,
-		InsertService = true,
-	}
-	local NETM = {
-		HttpGet = true, HttpGetAsync = true, HttpPost = true, HttpPostAsync = true,
-		GetAsync = true, PostAsync = true, RequestAsync = true,
-	}
+	local HX = { net = 0, sys = 0, mode = "exec" }
 	local EXEC = {
 		"firesignal", "fireclickdetector", "fireproximityprompt",
 		"firetouchinterest", "replicatesignal",
@@ -69,48 +58,16 @@ local okHX, errHX = xpcall(function()
 			end
 		end, false)
 	end
-	local function hxExtra(self, m, ...)
-		if not m then return false end
-		if NETM[m] then
-			setnm(m)
-			local r = pack(oldNc(self, ...))
-			pcall(function()
-				local a = pack(...)
-				local url = a[1]
-				if type(url) == "table" then url = url.Url or url.url end
-				if F.capNet then F.capNet("hx:" .. tostring(m), url, m, r[1]) end
-				HX.net = HX.net + 1
-			end)
-			return true, unpack(r, 1, r.n)
-		end
-		if EXTRA[m] then
-			pcall(function()
-				if F.capSys then F.capSys(self, "x:" .. m, ...) end
-				HX.sys = HX.sys + 1
-			end)
-			return false
-		end
-		return false
-	end
 	IN.hx = function()
 		if INST.hx then
 			MOD.hx = true
 			return true
-		end
-		F.ncExtras = F.ncExtras or {}
-		local already = false
-		for i = 1, #F.ncExtras do
-			if F.ncExtras[i] and F.ncExtras[i].mod == "hx" then already = true break end
-		end
-		if not already then
-			F.ncExtras[#F.ncExtras + 1] = { mod = "hx", fn = hxExtra }
 		end
 		for i = 1, #EXEC do pcall(hookExec, EXEC[i]) end
 		pcall(hookFile, "loadfile")
 		pcall(hookFile, "dofile")
 		INST.hx = true
 		MOD.hx = true
-		HX.mode = "chain"
 		return true
 	end
 	F.stage("hx", 13, IN.hx)

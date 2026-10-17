@@ -139,68 +139,63 @@ do
 
 	local capCall, capSys, capNet = F.capCall, F.capSys, F.capNet
 
-	F.ncExtras = F.ncExtras or {}
-
 	function F.ncHook(self, ...)
-		local m = getnm()
-		-- run registered extras first (hx net/sys methods)
-		if alive and not busy and F.ncExtras then
-			for i = 1, #F.ncExtras do
-				local ex = F.ncExtras[i]
-				if ex and MOD[ex.mod] then
-					local handled, a, b, c, d, e, f = ex.fn(self, m, ...)
-					if handled then
-						return a, b, c, d, e, f
+		local ok, a, b, c, d, e, f = pcall(function(...)
+			local m = getnm()
+			local kind = INTEREST[m]
+			if kind == nil or busy or not alive then
+				return oldNc(self, ...)
+			end
+			if kind <= 2 then
+				if X.rules then
+					local act2, args = F.rule(self, m, ...)
+					if act2 == 1 then return nil end
+					if act2 == 2 then
+						setnm(m)
+						return oldNc(self, unpack(args, 1, args.n))
 					end
 				end
-			end
-		end
-		local kind = INTEREST[m]
-		if kind == nil or busy or not alive then
-			return oldNc(self, ...)
-		end
-		if kind <= 2 then
-			if X.rules then
-				local act2, a = F.rule(self, m, ...)
-				if act2 == 1 then return nil end
-				if act2 == 2 then
-					setnm(m)
-					return oldNc(self, unpack(a, 1, a.n))
+				if S.nc and MOD.nc then
+					local okc, ent = pcall(capCall, self, m, ckc(), ...)
+					if kind == 2 and okc and ent then
+						setnm(m)
+						local r = pack(oldNc(self, ...))
+						enqueue({ k = 2, r = ent, v = r })
+						return unpack(r, 1, r.n)
+					elseif not okc then
+						fault("nc")
+					end
 				end
-			end
-			if S.nc and MOD.nc then
-				local ok, ent = pcall(capCall, self, m, ckc(), ...)
-				if kind == 2 and ok and ent then
+				setnm(m)
+				return oldNc(self, ...)
+			elseif kind == 3 then
+				pcall(capSys, self, m, ...)
+				if m ~= "Kick" or self == LP then
+					pcall(saveNow, sysReason(m))
+				end
+				X.sysM = m
+				X.sysT = clock()
+				setnm(m)
+				return oldNc(self, ...)
+			else
+				if (MOD.net or MOD.http or MOD.hx) and (self == game or self == HS) then
+					local a1 = ...
+					X.httpUrl = a1
 					setnm(m)
 					local r = pack(oldNc(self, ...))
-					enqueue({ k = 2, r = ent, v = r })
+					X.httpUrl = nil
+					pcall(capNet, m, a1, nil, r[1])
 					return unpack(r, 1, r.n)
-				elseif not ok then
-					fault("nc")
 				end
-			end
-			setnm(m)
-			return oldNc(self, ...)
-		elseif kind == 3 then
-			pcall(capSys, self, m, ...)
-			if m ~= "Kick" or self == LP then
-				pcall(saveNow, sysReason(m))
-			end
-			X.sysM = m
-			X.sysT = clock()
-			setnm(m)
-			return oldNc(self, ...)
-		else
-			if (MOD.net or MOD.http) and (self == game or self == HS) then
-				local a1 = ...
-				X.httpUrl = a1
 				setnm(m)
-				local r = pack(oldNc(self, ...))
-				X.httpUrl = nil
-				pcall(capNet, m, a1, nil, r[1])
-				return unpack(r, 1, r.n)
+				return oldNc(self, ...)
 			end
-			setnm(m)
+		end, ...)
+		if ok then
+			return a, b, c, d, e, f
+		end
+		fault("nc")
+		if oldNc then
 			return oldNc(self, ...)
 		end
 	end
@@ -284,10 +279,19 @@ do
 			return true
 		end
 		if not (hookmetamethod and getnm) then return false end
-		touchFlag("nc", 8)
-		local wrap = nc(F.ncHook)
+		touchFlag("nc", 5)
+		local wrap = F.ncHook
+		if newcclosure then
+			local okc, w = pcall(newcclosure, F.ncHook)
+			if okc and type(w) == "function" then wrap = w end
+		end
 		F.ncWrap = wrap
 		local ok, old = pcall(hookmetamethod, game, "__namecall", wrap)
+		if (not ok or type(old) ~= "function") and wrap ~= F.ncHook then
+			ok, old = pcall(hookmetamethod, game, "__namecall", F.ncHook)
+			wrap = F.ncHook
+			F.ncWrap = wrap
+		end
 		if ok and type(old) == "function" then
 			oldNc = old
 			INST.nc = true
@@ -648,7 +652,10 @@ do
 		if IN.nc() and CFG.nc then S.nc = true end
 	end)
 	F.stage("fn", 2, IN.fn)
-	F.stage("s2c", 3, IN.s2c)
+	F.stage("s2c", 3, function()
+		task.wait(0.35)
+		return IN.s2c()
+	end)
 	F.stage("sys", 4, IN.sys)
 	F.stage("net", 5, IN.net)
 	F.stage("http", 6, IN.http)
