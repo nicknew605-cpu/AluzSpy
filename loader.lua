@@ -7,10 +7,10 @@ local DISABLED = type(ENV.AluzSpyDisable) == "table" and ENV.AluzSpyDisable or {
 
 local ORDER = {
 	{ "core", true }, { "core2", false }, { "dump", true }, { "decode", false }, { "dump2", false },
-	{ "deobfuscate", false }, { "hooks", true }, { "hooks2", false }, { "deep", false },
-	{ "health", false }, { "actor", false }, { "ai", true }, { "chain", false },
-	{ "analysis", false }, { "reverse", false }, { "hybrid", false }, { "vip", false },
-	{ "save", true }, { "ui", true }, { "runtime", true },
+	{ "deobfuscate", false }, { "dumpmax", false }, { "hooks", true }, { "hooks2", false },
+	{ "deep", false }, { "health", false }, { "actor", false },
+	{ "ai", true }, { "chain", false }, { "analysis", false }, { "reverse", false },
+	{ "hybrid", false }, { "save", true }, { "vip", false }, { "ui", true }, { "runtime", true },
 }
 
 local manifest = {
