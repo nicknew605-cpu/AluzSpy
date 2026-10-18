@@ -5,10 +5,8 @@ local okDP, errDP = xpcall(function()
 	F.defMods.req = true
 	if CFG.ver ~= "1.2.2-max" then
 		CFG.ver = "1.2.2-max"
-		for k in pairs(F.defMods) do CFG.mods[k] = true end
 		F.cfgSave()
 	end
-	CFG.nc = true
 
 	local DP = { untilT = 0, hits = 0, why = {}, second = false }
 	F.deep = DP

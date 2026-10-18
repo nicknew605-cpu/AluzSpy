@@ -71,11 +71,11 @@ PATH.session = PATH.f("Save_" .. game.PlaceId .. "_" .. os.date("%Y%m%d_%H%M%S")
 PATH.tag = os.date("%H%M%S")
 
 local K = {
-	LOGCAP = 4000, BUCKET_MAX = 800, BUCKET_RATE = 480, ATT_CAP = 800, RF_CAP = 500,
-	DUMP_MAX = 800, DUMP_FILE_MAX = 16777216, DUMP_PEND_MAX = 50331648, DUMP_TOTAL = 134217728,
-	MEM_ABS = 3000, MEM_GROW = 1200, SCRIPT_CAP = 800, SCRIPT_RESERVE = 200,
+	LOGCAP = 2500, BUCKET_MAX = 400, BUCKET_RATE = 220, ATT_CAP = 250, RF_CAP = 180,
+	DUMP_MAX = 600, DUMP_FILE_MAX = 12582912, DUMP_PEND_MAX = 37748736, DUMP_TOTAL = 100663296,
+	MEM_ABS = 2800, MEM_GROW = 1000, SCRIPT_CAP = 600, SCRIPT_RESERVE = 150,
 }
-local QCAP, WIN = 3072, 1.2
+local QCAP, WIN = 2048, 1.0
 
 local S = { nc = false, dump = true }
 local MOD, INST = {}, {}
@@ -392,7 +392,16 @@ local function newRec(dir, remote, method, args, now, ex, caller)
 end
 
 local function enqueue(e)
-	if qt - qh >= QCAP then
+	local depth = qt - qh
+	if depth >= QCAP then
+		N.dropQ = N.dropQ + 1
+		return nil
+	end
+	if X.fps < 15 and depth > QCAP * 0.25 then
+		N.dropQ = N.dropQ + 1
+		return nil
+	end
+	if X.fps < 25 and depth > QCAP * 0.5 then
 		N.dropQ = N.dropQ + 1
 		return nil
 	end
@@ -512,10 +521,18 @@ function F.on(kind, name, fn, prio)
 end
 
 function F.budget()
-	local fill = (qt - qh) / QCAP
-	if fill > 0.5 then return 0.006 end
-	if X.fps < 20 then return 0.0015 end
-	return 0.0025
+	local fill = (qt - qh) / math.max(1, QCAP)
+	if fill > 0.85 then
+		local drop = math.floor((qt - qh) * 0.5)
+		qh = qh + drop
+		N.dropQ = N.dropQ + drop
+		return 0.0008
+	end
+	if fill > 0.6 then return 0.0012 end
+	if X.fps < 20 then return 0.0008 end
+	if X.fps < 35 then return 0.0012 end
+	if X.load and X.load > 2 then return 0.0015 end
+	return 0.0022
 end
 
 function F.register(name, info)
@@ -555,7 +572,8 @@ function F.migrate()
 		CFG.autoDeobf = true
 		CFG.autoReverse = true
 		CFG.net = true
-		CFG.profile = CFG.profile or "max"
+		CFG.autoScripts = true
+		CFG.profile = "max"
 	end
 	CFG.ver = VERSION
 	CFG.schema = 4
@@ -635,7 +653,7 @@ function F.boot()
 				s.state = err == false and "unsupported" or "ok"
 			end
 			F.trace("stage " .. name .. " " .. s.state)
-			task.wait(0.12)
+			task.wait(0.2)
 		end
 	end
 end

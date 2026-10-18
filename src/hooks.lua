@@ -140,64 +140,50 @@ do
 	local capCall, capSys, capNet = F.capCall, F.capSys, F.capNet
 
 	function F.ncHook(self, ...)
-		local ok, a, b, c, d, e, f = pcall(function(...)
-			local m = getnm()
-			local kind = INTEREST[m]
-			if kind == nil or busy or not alive then
-				return oldNc(self, ...)
-			end
-			if kind <= 2 then
-				if X.rules then
-					local act2, args = F.rule(self, m, ...)
-					if act2 == 1 then return nil end
-					if act2 == 2 then
-						setnm(m)
-						return oldNc(self, unpack(args, 1, args.n))
-					end
-				end
-				if S.nc and MOD.nc then
-					local okc, ent = pcall(capCall, self, m, ckc(), ...)
-					if kind == 2 and okc and ent then
-						setnm(m)
-						local r = pack(oldNc(self, ...))
-						enqueue({ k = 2, r = ent, v = r })
-						return unpack(r, 1, r.n)
-					elseif not okc then
-						fault("nc")
-					end
-				end
-				setnm(m)
-				return oldNc(self, ...)
-			elseif kind == 3 then
-				pcall(capSys, self, m, ...)
-				if m ~= "Kick" or self == LP then
-					pcall(saveNow, sysReason(m))
-				end
-				X.sysM = m
-				X.sysT = clock()
-				setnm(m)
-				return oldNc(self, ...)
-			else
-				if (MOD.net or MOD.http or MOD.hx) and (self == game or self == HS) then
-					local a1 = ...
-					X.httpUrl = a1
-					setnm(m)
-					local r = pack(oldNc(self, ...))
-					X.httpUrl = nil
-					pcall(capNet, m, a1, nil, r[1])
-					return unpack(r, 1, r.n)
-				end
-				setnm(m)
-				return oldNc(self, ...)
-			end
-		end, ...)
-		if ok then
-			return a, b, c, d, e, f
-		end
-		fault("nc")
-		if oldNc then
+		if not oldNc then return end
+		if not alive or busy then
 			return oldNc(self, ...)
 		end
+		local m = getnm()
+		local kind = INTEREST[m]
+		if not kind then
+			return oldNc(self, ...)
+		end
+		if kind == 1 then
+			if S.nc and MOD.nc then
+				pcall(capCall, self, m, ckc(), ...)
+			end
+			setnm(m)
+			return oldNc(self, ...)
+		elseif kind == 2 then
+			local ent = nil
+			if S.nc and MOD.nc then
+				local okc, e = pcall(capCall, self, m, ckc(), ...)
+				if okc then ent = e end
+			end
+			setnm(m)
+			local r = pack(oldNc(self, ...))
+			if ent then
+				pcall(enqueue, { k = 2, r = ent, v = r })
+			end
+			return unpack(r, 1, r.n)
+		elseif kind == 3 then
+			pcall(capSys, self, m, ...)
+			setnm(m)
+			return oldNc(self, ...)
+		elseif kind == 4 then
+			if MOD.net or MOD.http then
+				local a1 = ...
+				setnm(m)
+				local r = pack(oldNc(self, ...))
+				pcall(capNet, m, a1, nil, r[1])
+				return unpack(r, 1, r.n or 1)
+			end
+			setnm(m)
+			return oldNc(self, ...)
+		end
+		setnm(m)
+		return oldNc(self, ...)
 	end
 
 	function F.wrapInvoke(rf, cb)
@@ -278,27 +264,23 @@ do
 			MOD.nc = true
 			return true
 		end
-		if not (hookmetamethod and getnm) then return false end
-		touchFlag("nc", 5)
-		local wrap = F.ncHook
-		if newcclosure then
-			local okc, w = pcall(newcclosure, F.ncHook)
-			if okc and type(w) == "function" then wrap = w end
+		if type(hookmetamethod) ~= "function" or type(getnm) ~= "function" then
+			return false
 		end
-		F.ncWrap = wrap
-		local ok, old = pcall(hookmetamethod, game, "__namecall", wrap)
-		if (not ok or type(old) ~= "function") and wrap ~= F.ncHook then
-			ok, old = pcall(hookmetamethod, game, "__namecall", F.ncHook)
-			wrap = F.ncHook
-			F.ncWrap = wrap
-		end
-		if ok and type(old) == "function" then
-			oldNc = old
+		if type(oldNc) == "function" then
 			INST.nc = true
 			MOD.nc = true
 			return true
 		end
-		return false
+		local wrap = F.ncHook
+		local ok, old = pcall(hookmetamethod, game, "__namecall", wrap)
+		if not ok or type(old) ~= "function" then
+			return false
+		end
+		oldNc = old
+		INST.nc = true
+		MOD.nc = true
+		return true
 	end
 
 	IN.fn = function()
@@ -327,6 +309,7 @@ do
 
 	local function attach(r)
 		if attached[r] ~= nil or N.att >= K.ATT_CAP then return end
+		if X.fps < 18 then return end
 		local ok, u = pcall(r.IsDescendantOf, r, SV.CoreGui)
 		if ok and u then
 			attached[r] = false
@@ -376,21 +359,31 @@ do
 		end
 		INST.s2c = true
 		MOD.s2c = true
-		conns[#conns + 1] = game.DescendantAdded:Connect(consider)
+		conns[#conns + 1] = game.DescendantAdded:Connect(function(inst)
+			if not (MOD.s2c and alive) then return end
+			if N.att >= K.ATT_CAP then return end
+			consider(inst)
+		end)
 		task.spawn(function()
-			task.wait(0.5)
+			task.wait(1.5)
+			if not alive then return end
 			pcall(function()
 				local list = game:GetDescendants()
 				for i = 1, #list do
-					if not alive then return end
+					if not alive or N.att >= K.ATT_CAP then return end
 					consider(list[i])
-					if i % 1500 == 0 then task.wait() end
+					if i % 400 == 0 then task.wait() end
 				end
 			end)
 			if CAP.getnilinstances then
+				task.wait(0.5)
 				pcall(function()
 					local l = getnilinstances()
-					for i = 1, math.min(#l, 4000) do consider(l[i]) end
+					for i = 1, math.min(#l, 300) do
+						if not alive or N.att >= K.ATT_CAP then return end
+						consider(l[i])
+						if i % 50 == 0 then task.wait() end
+					end
 				end)
 			end
 		end)
@@ -641,21 +634,22 @@ do
 				if X.wdFail >= 2 then
 					X.wdFail = 0
 					X.wdN = X.wdN + 1
-					INST.nc = false
-					IN.nc()
+					pcall(IN.nc)
 				end
 			end
 		end)
 	end)
 
-	F.stage("nc", 1, function()
-		if IN.nc() and CFG.nc then S.nc = true end
+	F.stage("nc", 20, function()
+		task.wait(1.25)
+		if not alive then return false end
+		local ok = false
+		pcall(function() ok = IN.nc() end)
+		if ok and CFG.nc then S.nc = true end
+		return ok
 	end)
 	F.stage("fn", 2, IN.fn)
-	F.stage("s2c", 3, function()
-		task.wait(0.35)
-		return IN.s2c()
-	end)
+	F.stage("s2c", 3, IN.s2c)
 	F.stage("sys", 4, IN.sys)
 	F.stage("net", 5, IN.net)
 	F.stage("http", 6, IN.http)

@@ -10,12 +10,15 @@ local okDM, errDM = xpcall(function()
 	local baseAdd = D.add
 	D.add = function(src, tag, url, parent, id)
 		local ent = baseAdd(src, tag, url, parent, id)
-		if ent and CFG.autoDeobf and F.deob and F.deob.queue and type(src) == "string" then
+		if ent and CFG.autoDeobf and F.deob and F.deob.queue and type(src) == "string" and X.fps > 28 and DM.auto < 80 then
 			local isBin = F.isBin and F.isBin(src) or false
 			if not isBin then
-				if pcall(F.deob.queue, ent, src) then
-					DM.auto = DM.auto + 1
-				end
+				task.defer(function()
+					if not alive or X.fps < 22 then return end
+					if pcall(F.deob.queue, ent, src) then
+						DM.auto = DM.auto + 1
+					end
+				end)
 			end
 		end
 		return ent

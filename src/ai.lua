@@ -1,8 +1,8 @@
 do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load ai") end end
 do
-	local SAMPLE = { 6, 12, 24 }
-	local FLOOD = { 70, 40, 25 }
-	local LOOPMIN = { 20, 12, 8 }
+	local SAMPLE = { 4, 8, 16 }
+	local FLOOD = { 18, 10, 5 }
+	local LOOPMIN = { 8, 5, 3 }
 
 	local function thrMul(st)
 		local t = CFG.thr
@@ -32,7 +32,7 @@ do
 	local function muteRemote(inst, st, dir, rate, why, now)
 		local ttl = 5 * (2 ^ math.min(st.mutes, 3))
 		st.mutes = st.mutes + 1
-		local base = st.nsig >= 8 and 25 or 80
+		local base = st.nsig >= 5 and 50 or 150
 		local every = base * (X.load + 1)
 		local mu = {
 			key = inst, st = st, dir = dir, every = every, c = 0, lc = 0,

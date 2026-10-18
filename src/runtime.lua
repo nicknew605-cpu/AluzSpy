@@ -5,12 +5,23 @@ local okRT, errRT = xpcall(function()
 	conns[#conns + 1] = SV.RunService.Heartbeat:Connect(function(dt)
 		if not alive then return end
 		if dt > 3.5 then X.stall = true end
-		if dt > 0 then X.fps = X.fps * 0.95 + (1 / dt) * 0.05 end
+		if dt > 0 then X.fps = X.fps * 0.92 + (1 / dt) * 0.08 end
+		if dt > 0.05 then
+			X.load = (X.load or 0) * 0.8 + 1
+		else
+			X.load = (X.load or 0) * 0.9
+		end
+		if X.fps < 12 then
+			busy = true
+			pcall(F.process, 0.0005)
+			busy = false
+			return
+		end
 		busy = true
 		local budget = F.budget()
 		local ok, err = pcall(F.process, budget)
 		if not ok then noteErr(err) end
-		if D.jobs[1] or D.h <= D.t then
+		if X.fps >= 22 and (D.jobs[1] or D.h <= D.t) then
 			local okd, errd = pcall(D.pump)
 			if not okd then noteErr(errd) end
 		end
@@ -152,7 +163,7 @@ local okRT, errRT = xpcall(function()
 	task.spawn(F.boot)
 
 	if CFG.autoScripts then
-		task.delay(12, function()
+		task.delay(25, function()
 			if alive and F.scanScripts then F.scanScripts() end
 		end)
 	end
