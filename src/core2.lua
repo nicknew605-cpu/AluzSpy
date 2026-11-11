@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load core2") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load core2") end end
 local okC2, errC2 = xpcall(function()
 	F.extra = {}
 	F.extraChips = {}
@@ -16,9 +16,25 @@ local okC2, errC2 = xpcall(function()
 		if CFG.mods[n] == nil then CFG.mods[n] = true end
 	end
 	F.cfgLoad()
-	-- 1.2.3-vip: do not auto-ban ac/sd on soft recovery
-	if BAN.safe and BAN.disabled and next(BAN.disabled) then
-		-- only modules explicitly hard-disabled stay off
+
+	function F.applyMax()
+		CFG.profile = "max"
+		for k, v in pairs(F.defMods) do
+			if v ~= false then CFG.mods[k] = true end
+		end
+		CFG.dump = true
+		CFG.code = true
+		CFG.tree = true
+		CFG.callerDump = true
+		CFG.autoScripts = true
+		CFG.decode = true
+		CFG.autoDeobf = true
+		CFG.autoReverse = true
+		CFG.redact = true
+		CFG.net = true
+		CFG.update = true
+		F.cfgSave()
+		return CFG
 	end
 
 	function F.ext()
@@ -45,9 +61,15 @@ local okC2, errC2 = xpcall(function()
 		end
 	end
 
-	function F.job(name, fn, onDone)
+	function F.job(name, fn, onDone, timeout, prio)
 		if #J.queue >= 16 then return false end
-		J.queue[#J.queue + 1] = { name = name, co = coroutine.create(fn), done = onDone }
+		local job = {
+			name = tostring(name or "job"), co = coroutine.create(fn), done = onDone,
+			timeout = tonumber(timeout), prio = tonumber(prio) or 50,
+		}
+		local i = #J.queue
+		while i > 0 and (J.queue[i].prio or 50) < job.prio do i = i - 1 end
+		table.insert(J.queue, i + 1, job)
 		return true
 	end
 
@@ -85,7 +107,7 @@ local okC2, errC2 = xpcall(function()
 		F.debug.watch[#F.debug.watch + 1] = w
 		if #F.debug.watch > 40 then table.remove(F.debug.watch, 1) end
 		if X.stall or X.fps < 8 or X.memNow > K.MEM_ABS * 0.9 then
-			pcall(FS.write, PATH.f("debug_watch.json"), F.enc({
+			pcall(FS.write, PATH.h("debug_watch.json"), F.enc({
 				watch = F.debug.watch, stages = F.debug.stages, errors = errMap,
 			}) or "{}")
 		end
@@ -97,8 +119,8 @@ local okC2, errC2 = xpcall(function()
 			stats = F.stats and F.stats() or nil, extra = F.ext(),
 			missing = F.missing and F.missing() or nil,
 		}
-		pcall(FS.write, PATH.f("debug_all.json"), F.enc(out) or "{}")
-		warn("[AluzSpy] debugAll saved")
+		pcall(FS.write, PATH.h("debug_all.json"), F.enc(out) or "{}")
+		warn("[AluzSpy] debugAll saved: " .. tostring(PATH.h("debug_all.json")))
 		return out
 	end
 
@@ -120,12 +142,32 @@ local okC2, errC2 = xpcall(function()
 		J.inJob = true
 		J.ss = clock()
 		J.name = j.name
+		if not j.started then
+			j.started = clock()
+			if j.timeout then j.deadline = j.started + j.timeout end
+		end
+		if j.deadline and clock() > j.deadline then
+			J.cur = nil
+			J.inJob = false
+			busy = prev
+			noteErr("job_timeout_" .. tostring(j.name))
+			if type(coroutine.close) == "function" then pcall(coroutine.close, j.co) end
+			if j.done then
+				local okc, errc = pcall(j.done, nil, "timeout")
+				if not okc then noteErr(errc) end
+			end
+			return
+		end
 		local ok, res = coroutine.resume(j.co)
 		J.inJob = false
 		busy = prev
 		if not ok then
 			J.cur = nil
 			noteErr("job_" .. tostring(j.name) .. ":" .. tostring(res))
+			if j.done then
+				local okc, errc = pcall(j.done, nil, tostring(res))
+				if not okc then noteErr(errc) end
+			end
 		elseif coroutine.status(j.co) == "dead" then
 			J.cur = nil
 			if j.done then

@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load runtime") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load runtime") end end
 local okRT, errRT = xpcall(function()
 	local LOADER = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/refs/heads/main/loader.lua"
 
@@ -142,11 +142,12 @@ local okRT, errRT = xpcall(function()
 			return f ~= nil
 		end,
 		help = function()
-			warn("[AluzSpy] save() report() missing() chain() split(bool) find(text,n) top(n) stats() debug() errors() modules()")
+			warn("[AluzSpy] save() report() paths() watch() debugAll() stageReport() find(text,n) top(n) stats() modules()")
+			warn("[AluzSpy] fullDump() dumpIndex() dumpReport() missing() chain() split(bool) debug() errors() health()")
 			warn("[AluzSpy] decode(file) analyze(file,net) decodeAll() deobf(file) deobfAll() deobfReport() set(key,bool)")
 			warn("[AluzSpy] reverse(opts) reverseFind(text) gcmap(deep) whoCalls(name) callgraph() tree() scriptDiff()")
 			warn("[AluzSpy] vip() vip(\"scan\"|\"report\"|\"redact\"|\"safe\"|\"profile\", name) protect(name) threshold(name,mult)")
-			warn("[AluzSpy] health() actors() dump(bool) dumpScripts(filter) block(name) modify(name,fn) reset() reload() shutdown()")
+			warn("[AluzSpy] actors() dump(bool) dumpScripts(filter) block(name) modify(name,fn) reset() reload() shutdown()")
 		end,
 	}
 	for k, v in pairs(F.api or {}) do
@@ -159,7 +160,8 @@ local okRT, errRT = xpcall(function()
 	warn("[AluzSpy] loaded " .. VERSION .. " (AluzSpy.help() for commands)")
 
 	pcall(F.migrate)
-	F.trace("runtime boot")
+	if F.applyMax then pcall(F.applyMax) end
+	F.trace("runtime boot max")
 	task.spawn(F.boot)
 
 	if CFG.autoScripts then

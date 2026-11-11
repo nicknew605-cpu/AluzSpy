@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load health") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load health") end end
 local okH, errH = xpcall(function()
 	if not F.job then return end
 
@@ -96,7 +96,7 @@ local okH, errH = xpcall(function()
 		if not ok or not mt then return nil end
 		local cur = rawget(mt, "__namecall")
 		if cur == nil then return "missing" end
-		if cur ~= F.ncWrap then return "replaced" end
+		if cur ~= F.ncWrap and cur ~= F.ncInstalled and cur ~= F.ncHook then return "replaced" end
 		return nil
 	end
 

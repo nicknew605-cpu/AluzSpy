@@ -1,10 +1,11 @@
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load deep") end end
 local okDP, errDP = xpcall(function()
 	if CFG.ver == nil then CFG.ver = "" end
 	if CFG.split == nil then CFG.split = false end
 	F.cfgLoad()
 	F.defMods.req = true
-	if CFG.ver ~= "1.2.2-max" then
-		CFG.ver = "1.2.2-max"
+	if CFG.ver ~= "1.2.3-beta" then
+		CFG.ver = "1.2.3-beta"
 		F.cfgSave()
 	end
 

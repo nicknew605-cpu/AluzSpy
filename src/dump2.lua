@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load dump2") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load dump2") end end
 local okD2, errD2 = xpcall(function()
 	F.api = F.api or {}
 	 if CFG.decode == nil then CFG.decode = true end
@@ -7,7 +7,8 @@ if CFG.sandbox == nil then CFG.sandbox = false end
 	local byte = string.byte
 	D.store, D.spilled, D.storeBytes = {}, {}, 0
 	D.diffs, D.diffN, D.dirtyDump = {}, 0, false
-	PATH.spool = PATH.f(".spool")
+	D.extraFiles, D.extraBytes = {}, 0
+	PATH.spool = PATH.d(".spool")
 
 	local function fastKey(src)
 		local n = #src
@@ -315,7 +316,7 @@ if CFG.sandbox == nil then CFG.sandbox = false end
 				pos = e + len + 1
 			end
 			if n > 0 then
-				local name = PATH.f("Recovered_" .. os.date("%Y%m%d_%H%M%S") .. ".lua")
+				local name = PATH.d("Recovered_" .. os.date("%Y%m%d_%H%M%S") .. ".lua")
 				if FS.write(name, table.concat(out, "\n")) then F.recoveredFile = name end
 			end
 		end
@@ -329,16 +330,30 @@ if CFG.sandbox == nil then CFG.sandbox = false end
 		D.q[D.h] = nil
 		D.h = D.h + 1
 		local f, n = it.f, #it.s
-		D.pending = D.pending - n
-		if f:find("%.dec%.lua$") or f:find("%.diff%.txt$") or f:find("%.sandbox%.txt$") or f:find("%.report%.txt$") then
+		if n >= D.pending then D.pending = 0 else D.pending = D.pending - n end
+		if f:find("%.dec%.lua$") or f:find("%.diff%.txt$") or f:find("%.sandbox%.txt$")
+			or f:find("%.report%.txt$") or f:find("%.deob%.lua$") or f:find("%.layer%d+%.lua$")
+			or f:find("%.deob%.json$") then
+			if pcall(writefile, PATH.d(f), it.s) then
+				D.extraFiles[f] = n
+				D.extraBytes = (D.extraBytes or 0) + n
+			else
+				D.fail = D.fail + 1
+			end
+			D.dirtyDump = true
+			X.dirty = true
 			return true
 		end
 		if D.storeBytes + n <= STORE_MAX then
 			D.store[f] = it.s
 			D.storeBytes = D.storeBytes + n
 			spoolAppend(f, it.s)
+			D.files[#D.files + 1] = { f = f, n = n }
+			D.bytes = (D.bytes or 0) + n
 		elseif pcall(writefile, PATH.d(f), it.s) then
 			D.spilled[f] = n
+			D.files[#D.files + 1] = { f = f, n = n }
+			D.bytes = (D.bytes or 0) + n
 		else
 			D.fail = D.fail + 1
 		end
@@ -360,9 +375,12 @@ if CFG.sandbox == nil then CFG.sandbox = false end
 	F.api.saveIndex = saveIndex
 
 	F.extra.dump2 = function()
+		local extra = 0
+		for _ in pairs(D.extraFiles or {}) do extra = extra + 1 end
 		return {
 			hash = HASHFN ~= nil, store_mb = floor(D.storeBytes / 1048576), spilled = next(D.spilled) ~= nil,
 			seen_before = IDX.seen, variants = IDX.vars, diffs = IDX.diffs,
+			extra_files = extra, extra_bytes = D.extraBytes or 0, spool = PATH.spool,
 		}
 	end
 end, function(e)

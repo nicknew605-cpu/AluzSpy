@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load dump") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load dump") end end
 do
 	local OBF = {
 		{ "Luraph", "Luraph" }, { "LPH[%$%~%@%|]", "Luraph" }, { "LPH_", "Luraph" },
@@ -129,7 +129,7 @@ do
 		D.q[D.h] = nil
 		D.h = D.h + 1
 		local n = #it.s
-		D.pending = D.pending - n
+		if n >= D.pending then D.pending = 0 else D.pending = D.pending - n end
 		if pcall(writefile, PATH.d(it.f), it.s) then
 			D.files[#D.files + 1] = { f = it.f, n = n }
 			D.bytes = D.bytes + n
@@ -234,6 +234,12 @@ do
 		if e.st then a[#a + 1] = "st=" .. clean(tostring(e.st)) end
 		a[#a + 1] = blen .. "b"
 		if head ~= "" then a[#a + 1] = head end
+		if type(e.sent) == "string" and #e.sent > 0 then
+			local sent = clean(e.sent:sub(1, 180))
+			if F.mask then sent = F.mask(sent) end
+			a[#a + 1] = "sent: " .. sent
+		end
+		if type(e.hd) == "string" and #e.hd > 0 then a[#a + 1] = "hdr: " .. clean(e.hd:sub(1, 180)) end
 		if ent then
 			a[#a + 1] = "-> " .. ent.f
 			if ent.obf then a[#a + 1] = ent.obf end

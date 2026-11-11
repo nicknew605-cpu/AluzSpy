@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load deobfuscate") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load deobfuscate") end end
 local okDE, errDE = xpcall(function()
 	F.api = F.api or {}
 	if CFG.deob == nil then CFG.deob = true end
@@ -336,6 +336,17 @@ local okDE, errDE = xpcall(function()
 		end
 		return false
 	end
+
+	F.deobfReport = function()
+		return {
+			runs = DE.stats.runs, ok = DE.stats.ok, fail = DE.stats.fail,
+			strings = DE.stats.strings, urls = DE.stats.urls, flags = DE.stats.flags,
+			layers = DE.stats.layers, auto = DE.stats.auto, pending = #DE.pending,
+			enabled = CFG.deob == true, autoOn = CFG.autoDeobf == true,
+		}
+	end
+
+	F.api.deobfReport = F.deobfReport
 
 	F.extra.deobfuscate = function()
 		return { stats = DE.stats, pending = #DE.pending, auto = CFG.autoDeobf }

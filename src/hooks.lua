@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load hooks") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load hooks") end end
 do
 	local HS = SV.HttpService
 	local INTEREST = {
@@ -173,10 +173,11 @@ do
 			return oldNc(self, ...)
 		elseif kind == 4 then
 			if MOD.net or MOD.http then
-				local a1 = ...
+				local a1, a2 = ...
 				setnm(m)
 				local r = pack(oldNc(self, ...))
-				pcall(capNet, m, a1, nil, r[1])
+				local sent = type(a2) == "string" and a2 or nil
+				pcall(capNet, m, a1, nil, r[1], sent)
 				return unpack(r, 1, r.n or 1)
 			end
 			setnm(m)
@@ -278,6 +279,8 @@ do
 			return false
 		end
 		oldNc = old
+		F.ncWrap = wrap
+		F.ncInstalled = wrap
 		INST.nc = true
 		MOD.nc = true
 		return true
@@ -402,6 +405,26 @@ do
 		return true
 	end
 
+	local PROPS = {
+		WalkSpeed = true, JumpPower = true, JumpHeight = true, HipHeight = true, Health = true, MaxHealth = true,
+		Gravity = true, CFrame = true, Position = true, Anchored = true, PlatformStand = true,
+	}
+	local SENS = {
+		WalkSpeed = true, JumpPower = true, JumpHeight = true, HipHeight = true, Health = true,
+		MaxHealth = true, Gravity = true,
+	}
+	local function ownChar(self)
+		local ch = LP.Character
+		if not ch then return false end
+		local p = self
+		for _ = 1, 4 do
+			if p == ch then return true end
+			p = p.Parent
+			if not p then return false end
+		end
+		return false
+	end
+
 	IN.ni = function()
 		if INST.ni then
 			MOD.ni = true
@@ -410,6 +433,14 @@ do
 		if not hookmetamethod then return false end
 		local old
 		local ok, o = pcall(hookmetamethod, game, "__newindex", nc(function(self, k, v)
+			if MOD.ps and alive and not busy and k ~= nil and PROPS[k] then
+				local okc, ex = pcall(ckc)
+				if ex then
+					enqueue({ k = 9, s = self, p = k, v = v, x = true, t = clock() })
+				elseif SENS[k] and (self == workspace or (typeof(self) == "Instance" and ownChar(self))) then
+					enqueue({ k = 9, s = self, p = k, v = v, x = false, t = clock() })
+				end
+			end
 			if k == "OnClientInvoke" and MOD.ni and alive and not busy and type(v) == "function"
 				and typeof(self) == "Instance" then
 				v = F.wrapInvoke(self, v)
@@ -497,15 +528,17 @@ do
 			local ok = F.hookWith(fn, function(holder)
 				return function(opts, ...)
 					if MOD.net and alive and not busy then
-						local url, meth
+						local url, meth, sent, hdr
 						if type(opts) == "table" then
 							url = opts.Url or opts.url or opts.URL
 							meth = opts.Method or opts.method
+							sent = opts.Body or opts.body
+							hdr = opts.Headers or opts.headers
 						elseif type(opts) == "string" then
 							url = opts
 						end
 						local r = pack(holder.old(opts, ...))
-						pcall(capNet, tag, url, meth, r[1])
+						pcall(capNet, tag, url, meth, r[1], sent, hdr)
 						return unpack(r, 1, r.n)
 					end
 					return holder.old(opts, ...)

@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load reverse") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load reverse") end end
 local okRV, errRV = xpcall(function()
 	if not F.job then return end
 	F.api = F.api or {}
@@ -194,6 +194,10 @@ local okRV, errRV = xpcall(function()
 			return RV.last and RV.last.edges or {}
 		end
 		return RV.last
+	end
+
+	F.reverseSummary = function()
+		return F.api.reverse("status")
 	end
 
 	F.extra.reverse = function()

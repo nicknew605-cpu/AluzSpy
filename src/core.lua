@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load core") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load core") end end
 local SV = setmetatable({}, { __index = function(t, k)
 	local v = game:GetService(k)
 	rawset(t, k, v)
@@ -20,7 +20,7 @@ do
 	end
 end
 
-local VERSION = "1.2.2-max"
+local VERSION = "1.2.3-beta"
 local clock = os.clock
 local pack = table.pack
 local unpack = table.unpack or unpack
@@ -45,13 +45,14 @@ end
 CAP.websocket = type(genv.WebSocket) == "table" or type(genv.websocket) == "table"
 CAP.deobfuscate, CAP.reverse, CAP.vip = false, false, false
 
-local PATH = { dir = "AluzSpy", dumpDir = "AluzSpy/Dump", ok = false }
+local PATH = { dir = "AluzSpy", dumpDir = "AluzSpy/Dump", hooksDir = "AluzSpy/Hooks", ok = false }
 do
 	if type(makefolder) == "function" and type(isfolder) == "function" then
 		local ok, res = pcall(function()
 			if not isfolder(PATH.dir) then makefolder(PATH.dir) end
 			if not isfolder(PATH.dumpDir) then makefolder(PATH.dumpDir) end
-			return isfolder(PATH.dir) and isfolder(PATH.dumpDir)
+			if not isfolder(PATH.hooksDir) then makefolder(PATH.hooksDir) end
+			return isfolder(PATH.dir) and isfolder(PATH.dumpDir) and isfolder(PATH.hooksDir)
 		end)
 		PATH.ok = ok and res == true
 	end
@@ -64,10 +65,15 @@ function PATH.d(name)
 	if PATH.ok then return PATH.dumpDir .. "/" .. name end
 	return "AluzDump_" .. name
 end
+function PATH.h(name)
+	if PATH.ok then return PATH.hooksDir .. "/" .. name end
+	return "AluzHooks_" .. name
+end
 PATH.flag = PATH.f(".boot")
 PATH.cfg = PATH.f("config.json")
 PATH.crash = PATH.f("crash.txt")
-PATH.session = PATH.f("Save_" .. game.PlaceId .. "_" .. os.date("%Y%m%d_%H%M%S") .. ".json")
+PATH.session = PATH.h("Hooks_" .. game.PlaceId .. "_" .. os.date("%Y%m%d_%H%M%S") .. ".json")
+PATH.sessionTxt = PATH.h("Hooks_" .. game.PlaceId .. "_" .. os.date("%Y%m%d_%H%M%S") .. ".txt")
 PATH.tag = os.date("%H%M%S")
 
 local K = {
@@ -131,7 +137,40 @@ local F = { h = {}, ticks = {}, stages = {}, defMods = {
 	req = true, hx = true,
 } }
 
+F.extra = F.extra or {}
+F.api = F.api or {}
+
 for k, v in pairs(F.defMods) do CFG.mods[k] = v end
+
+function F.stats()
+	local files = 0
+	for _ in pairs(D.store or {}) do files = files + 1 end
+	for _ in pairs(D.spilled or {}) do files = files + 1 end
+	local muted = 0
+	for _ in pairs(muteList or {}) do muted = muted + 1 end
+	local hooks = 0
+	for _, h in pairs(F.h) do
+		if type(h) == "function" then hooks = hooks + 1 end
+	end
+	return {
+		total = N.total, calls = N.total, logged = N.logged, merged = N.merged, sampled = N.sampled,
+		supp = N.supp, suppressed = N.supp, remotes = N.remotes, errors = N.err, muted = muted,
+		drops = N.dropQ, hooks = hooks, seq = N.seq, net = N.netCount, src = N.srcCount,
+		dumps = #D.list, dumpBytes = D.bytes or 0, bytes = D.bytes or 0, files = #D.files,
+		storeFiles = files, pending = D.pending, skipped = D.skipped, fail = D.fail,
+		jobs = #D.jobs, queue = qt - qh,
+		fps = floor(X.fps * 100 + 0.5) / 100, mem = floor(X.memNow * 100 + 0.5) / 100,
+		uptime = floor((clock() - T0) * 100 + 0.5) / 100, profile = CFG.profile,
+	}
+end
+
+function F.hookCount()
+	local n = 0
+	for _, h in pairs(F.h) do
+		if type(h) == "function" then n = n + 1 end
+	end
+	return n
+end
 
 function FS.write(name, data)
 	if not HAS_W then return false end
@@ -247,21 +286,21 @@ do
 		local stage = type(txt) == "string" and txt:match("^([%w%-_]+)") or nil
 		local ts = type(txt) == "string" and tonumber(txt:match("\n(%d+)")) or nil
 		if not ts or math.abs(os.time() - ts) < 900 then
-			-- 1.2.2-stable: soft recovery — only throttle the exact culprit once.
-			-- Do NOT ban the whole risk set (that left only s2c/fn alive).
+			
+			
 			local culprit = stage
 			if stage == "net-active" then culprit = "net" end
 			if stage == "nc" or stage == "namecall" then culprit = "nc" end
 			if culprit and culprit ~= "boot" and culprit ~= "net-active" then
 				CFG.crashes[culprit] = (CFG.crashes[culprit] or 0) + 1
-				-- only hard-disable after 3 crashes of the SAME module
+				
 				if CFG.crashes[culprit] >= 3 then
 					CFG.mods[culprit] = false
 					BAN.set[culprit] = true
 					BAN.disabled[culprit] = true
 					BAN.safe = true
 				else
-					-- soft: delay install, still allow module
+					
 					BAN.safe = false
 				end
 			end
@@ -424,10 +463,12 @@ function F.capSrc(tag, src, id, parent, url)
 	enqueue({ k = 7, tag = tag, src = src, id = id, par = parent, url = url, t = clock() })
 end
 
-function F.capNet(tag, url, meth, res)
+function F.capNet(tag, url, meth, res, sent, hdr)
 	if type(url) == "table" then
-		meth = meth or url.Method
-		url = url.Url or url.url
+		sent = sent or url.Body or url.body
+		hdr = hdr or url.Headers or url.headers
+		meth = meth or url.Method or url.method
+		url = url.Url or url.url or url.URL
 	end
 	if type(url) == "string" and url:find("AluzSpy", 1, true) and url:find("version", 1, true) then return end
 	local body, status
@@ -438,7 +479,25 @@ function F.capNet(tag, url, meth, res)
 		body = res
 	end
 	if type(body) == "string" and #body > 24 and type(url) == "string" then F.nbPush(body, url) end
-	enqueue({ k = 3, tag = tag, u = url, mth = meth, b = body, st = status, par = X.cof[coroutine.running()], t = clock() })
+	local hd
+	if type(hdr) == "table" then
+		local parts = {}
+		pcall(function()
+			for k, v in pairs(hdr) do
+				if #parts >= 8 then break end
+				local val = tostring(v):sub(1, 90)
+				if F.mask then val = F.mask(val) end
+				parts[#parts + 1] = tostring(k):sub(1, 30) .. "=" .. val
+			end
+		end)
+		if #parts > 0 then hd = table.concat(parts, "; ") end
+	end
+	if sent ~= nil and type(sent) ~= "string" then sent = tostring(sent) end
+	if type(sent) == "string" and #sent > 4000 then sent = sent:sub(1, 4000) end
+	enqueue({
+		k = 3, tag = tag, u = url, mth = meth, b = body, st = status,
+		sent = sent, hd = hd, par = X.cof[coroutine.running()], t = clock(),
+	})
 end
 
 function F.hookWith(fn, make, useNc)
@@ -474,7 +533,14 @@ handle = function(e, now)
 		end
 	end
 	local h = F.h[k]
-	if h then h(e, e.t or now) end
+	if type(h) == "function" then
+		local ok, err = pcall(h, e, e.t or now)
+		if not ok then
+			N.err = N.err + 1
+			X.hErr = (X.hErr or 0) + 1
+			noteErr("handler_" .. tostring(k) .. ":" .. tostring(err))
+		end
+	end
 end
 
 function F.process(budget)

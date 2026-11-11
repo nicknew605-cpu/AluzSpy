@@ -1,12 +1,13 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load watch") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load watch") end end
 local okWT, errWT = xpcall(function()
 	F.api = F.api or {}
-	F.alerts = {}
+	F.extra = F.extra or {}
+	F.alerts = F.alerts or {}
 	for _, n in ipairs({ "ps", "tc" }) do
 		MOD[n] = false
 		INST[n] = false
-		F.defMods[n] = false
-		if CFG.mods[n] == nil then CFG.mods[n] = false end
+		F.defMods[n] = true
+		if CFG.mods[n] == nil then CFG.mods[n] = true end
 	end
 
 	local function mask(s)
@@ -130,11 +131,12 @@ local okWT, errWT = xpcall(function()
 	end
 
 	local h1 = F.h[1]
-	if h1 then
+	if type(h1) == "function" then
 		F.h[1] = function(e, now)
 			local a, inst = e.a, e.s
-			if a and typeof(inst) == "Instance" then pcall(noteSchema, inst, e.d, a) end
-			return h1(e, now)
+			if type(a) == "table" and typeof(inst) == "Instance" then pcall(noteSchema, inst, e.d, a) end
+			local ok, res = pcall(h1, e, now)
+			if not ok then noteErr("watch_h1:" .. tostring(res)) end
 		end
 	end
 
@@ -156,9 +158,10 @@ local okWT, errWT = xpcall(function()
 	end
 
 	local h3 = F.h[3]
-	if h3 then
+	if type(h3) == "function" then
 		F.h[3] = function(e, now)
-			h3(e, now)
+			local okh, eh = pcall(h3, e, now)
+			if not okh then noteErr("watch_h3:" .. tostring(eh)) end
 			pcall(function()
 				local url = type(e.u) == "string" and e.u or ""
 				local rec = X.netRecs[tostring(e.tag) .. "|" .. clean(url:sub(1, 200))]
@@ -186,79 +189,6 @@ local okWT, errWT = xpcall(function()
 		end
 	end
 
-	local function wtNet(tag, url, meth, res, sent, hdr)
-		if type(url) == "table" then
-			meth = meth or url.Method
-			url = url.Url or url.url
-		end
-		if type(url) == "string" and url:find("AluzSpy", 1, true) and url:find("version", 1, true) then return end
-		local body, status
-		if type(res) == "table" then
-			body = res.Body or res.body
-			status = res.StatusCode or res.status_code or res.Status
-		elseif type(res) == "string" then
-			body = res
-		end
-		if type(body) == "string" and #body > 24 and type(url) == "string" then F.nbPush(body, url) end
-		local hd
-		if type(hdr) == "table" then
-			local t = {}
-			pcall(function()
-				for k, v in pairs(hdr) do
-					if #t < 8 then t[#t + 1] = tostring(k):sub(1, 30) .. "=" .. mask(clean(tostring(v):sub(1, 60))) end
-				end
-			end)
-			if #t > 0 then hd = table.concat(t, "; ") end
-		end
-		if sent ~= nil and type(sent) ~= "string" then sent = tostring(sent) end
-		enqueue({
-			k = 3, tag = tag, u = url, mth = meth, b = body, st = status, sent = sent, hd = hd,
-			par = X.cof[coroutine.running()], t = clock(),
-		})
-	end
-
-	IN.net = function()
-		if INST.net then
-			MOD.net = true
-			return true
-		end
-		local any = false
-		local function hookReq(fn, tag)
-			local ok = F.hookWith(fn, function(holder)
-				return function(opts, ...)
-					if MOD.net and alive and not busy then
-						local url, meth, sent, hdr
-						if type(opts) == "table" then
-							url = opts.Url or opts.url or opts.URL
-							meth = opts.Method or opts.method
-							sent = opts.Body or opts.body
-							hdr = opts.Headers or opts.headers
-						elseif type(opts) == "string" then
-							url = opts
-						end
-						local r = pack(holder.old(opts, ...))
-						pcall(wtNet, tag, url, meth, r[1], sent, hdr)
-						return unpack(r, 1, r.n)
-					end
-					return holder.old(opts, ...)
-				end
-			end, false)
-			if ok then any = true end
-		end
-		hookReq(genv.request, "request")
-		hookReq(genv.http_request, "http_request")
-		hookReq(genv.httprequest, "httprequest")
-		if type(genv.syn) == "table" then hookReq(genv.syn.request, "syn.request") end
-		if type(genv.http) == "table" then hookReq(genv.http.request, "http.request") end
-		if type(genv.fluxus) == "table" then hookReq(genv.fluxus.request, "fluxus.request") end
-		INST.net = true
-		MOD.net = true
-		return any
-	end
-	for _, s in ipairs(F.stages) do
-		if s[1] == "net" then s[2] = IN.net end
-	end
-
 	local PROPS = {
 		WalkSpeed = true, JumpPower = true, JumpHeight = true, HipHeight = true, Health = true, MaxHealth = true,
 		Gravity = true, CFrame = true, Position = true, Anchored = true, PlatformStand = true,
@@ -283,8 +213,9 @@ local okWT, errWT = xpcall(function()
 	F.h[9] = function(e, now)
 		local nm = "?"
 		if typeof(e.s) == "Instance" then nm = getInfo(e.s).full end
-		local key = e.p .. "|" .. nm .. "|" .. tostring(e.x)
-		local val = select(2, pcall(ser, e.v, 0, {}))
+		local key = tostring(e.p) .. "|" .. nm .. "|" .. tostring(e.x)
+		local okv, val = pcall(ser, e.v, 0, {})
+		if not okv then val = "<" .. typeof(e.v) .. ">" end
 		local rec = precs[key]
 		if rec and rec.live and now - rec.t0 < WIN * 3 then
 			rec.n = rec.n + 1
@@ -305,7 +236,7 @@ local okWT, errWT = xpcall(function()
 	end
 
 	IN.ps = function()
-		if INST.ps then
+		if INST.ps or INST.ni then
 			MOD.ps = true
 			return true
 		end
@@ -313,9 +244,9 @@ local okWT, errWT = xpcall(function()
 		local old
 		local ok, o = pcall(hookmetamethod, game, "__newindex", nc(function(self, k, v)
 			if PROPS[k] and MOD.ps and alive and not busy then
-				local ex = ckc()
-				if ex or (SENS[k] and (self == workspace or mine(self))) then
-					enqueue({ k = 9, s = self, p = k, v = v, x = ex, t = clock() })
+				local okc, ex = pcall(ckc)
+				if ex or (SENS[k] and (self == workspace or (typeof(self) == "Instance" and mine(self)))) then
+					enqueue({ k = 9, s = self, p = k, v = v, x = ex == true, t = clock() })
 				end
 			end
 			return old(self, k, v)
@@ -336,7 +267,7 @@ local okWT, errWT = xpcall(function()
 		if not okI or typeof(ch) ~= "Instance" then return false end
 		local okf, fn = pcall(function() return ch.SendAsync end)
 		pcall(ch.Destroy, ch)
-		if not okf then return false end
+		if not okf or type(fn) ~= "function" then return false end
 		local ok = F.hookWith(fn, function(holder)
 			return function(self, text, ...)
 				if MOD.tc and alive and not busy and type(text) == "string" then
@@ -345,7 +276,7 @@ local okWT, errWT = xpcall(function()
 				return holder.old(self, text, ...)
 			end
 		end, false)
-		INST.tc = true
+		INST.tc = ok
 		MOD.tc = ok
 		return ok
 	end
@@ -370,8 +301,17 @@ local okWT, errWT = xpcall(function()
 		for i = 1, math.min(#out, 25) do warn("[AluzSpy] " .. out[i].r .. " " .. tostring(out[i].schema)) end
 		return out
 	end
+	F.api.watch = function()
+		return {
+			alerts = F.alerts, schemas = schN, redact = F.redactStats(),
+			property = MOD.ps == true, chat = MOD.tc == true,
+		}
+	end
 	F.extra.watch = function()
-		return { alerts = #F.alerts, schemas = schN }
+		return {
+			alerts = #F.alerts, schemas = schN, property = MOD.ps == true,
+			chat = MOD.tc == true, redact = CFG.redact == true,
+		}
 	end
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()

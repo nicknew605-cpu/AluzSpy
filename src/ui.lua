@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load ui") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load ui") end end
 local okUI, errUI = xpcall(function()
 	local TS, UIS = SV.TweenService, SV.UserInputService
 	local W_OPEN, W_CLOSED, H = 126, 26, 26
@@ -108,7 +108,7 @@ local okUI, errUI = xpcall(function()
 				s.total, s.logged, s.remotes, s.muted, s.errors, s.dumps, table.concat(parts, " "), s.fps, s.mem,
 				F.hookLine and F.hookLine() or "n/a", F.warnN or 0, F.vipLine and F.vipLine() or "max std")
 		end
-		return "session file:\n" .. PATH.session .. "\n\ncache/spool:\n" .. PATH.dir
+		return "hooks:\n" .. PATH.hooksDir .. "\n\ndump:\n" .. PATH.dumpDir .. "\n\nsession:\n" .. PATH.session
 	end
 
 	local function showPop(mode)

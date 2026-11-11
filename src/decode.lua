@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load decode") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load decode") end end
 local okDC, errDC = xpcall(function()
 	if CFG.decode == nil then CFG.decode = true end
 	if CFG.sandbox == nil then CFG.sandbox = false end
@@ -713,6 +713,20 @@ local okDC, errDC = xpcall(function()
 			if st.dead then error("aluz-sandbox-limit", 0) end
 		end
 
+		local function guarded(f, ...)
+			if type(debug) ~= "table" or type(debug.sethook) ~= "function" then
+				return pack(pcall(f, ...))
+			end
+			local steps = 0
+			debug.sethook(function()
+				steps = steps + 1
+				if steps > 12000 then error("aluz-sandbox-limit", 0) end
+			end, "", 200)
+			local r = pack(pcall(f, ...))
+			debug.sethook()
+			return r
+		end
+
 		local function logf(s)
 			if st.nlog < LOGMAX then
 				st.nlog = st.nlog + 1
@@ -974,7 +988,8 @@ local okDC, errDC = xpcall(function()
 		local fn, cerr = loadstring(src)
 		if not fn then return nil, "compile: " .. tostring(cerr) end
 		if not sandboxed(fn) then return nil, "setfenv unsupported, refusing to run" end
-		local okm, errm = pcall(fn)
+		local gr = guarded(fn)
+		local okm, errm = gr[1], gr[2]
 		if not okm and tostring(errm) ~= "aluz-sandbox-limit" then
 			st.errors[#st.errors + 1] = tostring(errm):sub(1, 160)
 		end
@@ -984,12 +999,13 @@ local okDC, errDC = xpcall(function()
 			ran = ran + 1
 			st.ops, st.waits, st.dead = 0, 0, false
 			local args = item[3]
-			local okc, errc
+			local gr
 			if args then
-				okc, errc = pcall(item[1], unpack(args, 1, args.n))
+				gr = guarded(item[1], unpack(args, 1, args.n))
 			else
-				okc, errc = pcall(item[1], mkmock("arg1"), mkmock("arg2"))
+				gr = guarded(item[1], mkmock("arg1"), mkmock("arg2"))
 			end
+			local okc, errc = gr[1], gr[2]
 			if not okc and tostring(errc) ~= "aluz-sandbox-limit" and #st.errors < 20 then
 				st.errors[#st.errors + 1] = tostring(errc):sub(1, 160)
 			end

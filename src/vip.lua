@@ -1,7 +1,7 @@
-do local _ = "aluzspy@1.2.2-max" if F and F.trace then F.trace("load vip") end end
+do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load vip") end end
 local okVP, errVP = xpcall(function()
 	CAP.vip = true
-	F.register("vip", { ver = "1.2.2-max" })
+	F.register("vip", { ver = "1.2.3-beta" })
 
 	local RISK = { "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx", "ac", "sd", "ps", "tc" }
 	local ALL = { "fn", "s2c", "sys", "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx", "ac", "hc", "sd", "ps", "tc" }
@@ -166,7 +166,9 @@ local okVP, errVP = xpcall(function()
 		if V.busyRedact then return "running" end
 		local files = {}
 		if PATH.session then files[#files + 1] = PATH.session end
+		if PATH.sessionTxt then files[#files + 1] = PATH.sessionTxt end
 		if D.n > 0 and PATH.dumpfile then files[#files + 1] = PATH.dumpfile end
+		if D.indexPath then files[#files + 1] = D.indexPath end
 		local ok = F.job("redact", function()
 			local done = {}
 			for _, p in ipairs(files) do
