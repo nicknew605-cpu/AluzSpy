@@ -1,10 +1,57 @@
+AluzSpy 1.2.3 Beta
+
+OUTPUT
+- Saved data is split by purpose: AluzSpy/Hooks/ for hook, remote, schema, alert, and debug data; AluzSpy/Dump/ for script dumps, decoded output, deobf output, diffs, and the dump index.
+- Hooks reports are rebuilt from the live log since startup (2500-record cap) and do not embed dumped or run scripts.
+- Every save writes Hooks_<place>_<time>.json and .txt, then writes the Dump index and FullScripts file.
+- Redaction now covers both the .txt and .json hook reports. Dumped script sources stay untouched.
+- PATH.session is generated once before the report is built, so meta.session_file is no longer stale.
+- Added AluzSpy.paths() and Dump/Index_*.json/.txt.
+
+WATCH
+- watch.lua is loaded again as a required module after the dump, AI, chain, and reverse modules.
+- Cookie, webhook, token, API-key, email, IP, JWT, and user-path masking is active again through F.redact().
+- Remote schema shapes, exfiltration alerts, property writes, and TextChannel capture are back.
+- watch reuses the existing __newindex hook from hooks.lua instead of installing a second conflicting hook.
+- Each watch entry point is guarded, and handler errors are isolated by the core dispatcher.
+
+DUMP
+- Fixed dump2 dropping .dec.lua, .sandbox.txt, .diff.txt, and .report.txt output; generated analysis files are now written to Dump/.
+- Fixed FullScripts using the wrong fields; it now reads D.list[].f and D.store, includes unique scripts only, and writes into Dump/.
+- Dump index now uses the real byte counts, file names, hashes, tags, categories, parent IDs, variants, and change flags.
+- Script files, spill files, and recovered spool files now go to Dump/ and update D.files/D.bytes accounting.
+- Structural diffs are written as Dump/Diff_*.txt on save.
+- D.pending is clamped so generated artifacts cannot drive it negative.
+
+DEBUG AND RUNTIME
+- Added F.stats(), F.hookCount(), F.deobfReport(), and F.reverseSummary() for reports, UI, and debug APIs.
+- AluzSpy.debugAll() now writes Hooks/debug_all.json and includes stages, watch samples, stats, errors, and extras.
+- Job runner now honours timeout and priority, reports coroutine errors to onDone(), and can close a timed-out job.
+- Sandbox now installs a debug.sethook instruction guard, so pure busy loops cannot hang the scheduler.
+- Health conflict detection now accepts the actually installed __namecall wrapper.
+- HTTP hooks now capture request bodies and masked headers for the watch exfiltration checks.
+- Max profile is applied automatically on every start through F.applyMax().
+
+DOCS
+- README and changelog updated for 1.2.3-beta and the new Hooks/Dump layout.
+
+LIMITS
+- LOGCAP 2500, DUMP_MAX 600, DUMP_FILE_MAX 12MB, DUMP_PEND_MAX 36MB, DUMP_TOTAL 96MB, SCRIPT_CAP 600.
+- Hook reports keep the live log cap; older entries roll out on a busy session.
+- Watch property capture covers selected movement, health, gravity, CFrame, position, anchor, and platform properties only.
+
+VERSION
+- 1.2.3-beta / aluzspy@1.2.3-beta
+
+---
+
 AluzSpy 1.2.2 Max
 
 CRITICAL
-- Single __namecall only (hooks.lua). hooks2 chains via F.ncExtras — no double hook, no crash with s2c+hx+nc
+- Single __namecall only (hooks.lua). hooks2 chains via F.ncExtras - no double hook, no crash with s2c+hx+nc
 - Soft recovery: hard-disable a module only after 3 crashes of that module; no mass-ban of net/http/ls/hx
 - save.lua rewritten (repo copy was broken). SAVE works again
-- FullScripts_<place>_<time>.lua on every save — one file, all captured script sources
+- FullScripts_<place>_<time>.lua on every save - one file, all captured script sources
 
 DUMP
 - DUMP_MAX 800, file 16MB, total 128MB, LOGCAP 4000, ATT_CAP 800, SCRIPT_CAP 800
