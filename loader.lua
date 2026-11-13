@@ -1,4 +1,4 @@
-local VERSION = "1.2.3-beta"
+local VERSION = "1.2.3-stable"
 local ENV = (type(getgenv) == "function" and getgenv()) or _G
 local REF = (type(ENV.AluzSpyRef) == "string" and ENV.AluzSpyRef ~= "") and ENV.AluzSpyRef or "main"
 local ROOT = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/" .. REF .. "/src/"
@@ -7,14 +7,40 @@ local DISABLED = type(ENV.AluzSpyDisable) == "table" and ENV.AluzSpyDisable or {
 
 local ORDER = {
 	{ "core", true }, { "core2", false }, { "dump", true }, { "decode", false }, { "dump2", false },
-	{ "deobfuscate", false }, { "dumpmax", false }, { "hooks", true }, { "hooks2", false },
-	{ "deep", false }, { "health", false }, { "actor", false },
-	{ "ai", true }, { "chain", false }, { "analysis", false }, { "reverse", false },
-	{ "hybrid", false }, { "watch", true }, { "save", true }, { "vip", false }, { "ui", true }, { "runtime", true },
+	{ "deobfuscate", false }, { "dumpmax", false }, { "vm", false },
+	{ "hooks", true }, { "hooks2", false }, { "deep", false }, { "health", false }, { "actor", false },
+	{ "ai", true }, { "chain", false }, { "analysis", false }, { "reverse", false }, { "hybrid", false },
+	{ "watch", true }, { "save", true }, { "vip", false }, { "ui", true }, { "runtime", true },
+}
+
+local DEPS = {
+	core2 = { "core" },
+	dump = { "core" },
+	decode = { "core", "core2" },
+	dump2 = { "core", "dump" },
+	deobfuscate = { "core" },
+	dumpmax = { "core", "dump" },
+	vm = { "core" },
+	hooks = { "core" },
+	hooks2 = { "core" },
+	deep = { "core", "dump" },
+	health = { "core" },
+	actor = { "core", "core2" },
+	ai = { "core" },
+	chain = { "core", "core2" },
+	analysis = { "core", "core2" },
+	reverse = { "core", "core2" },
+	hybrid = { "core", "core2", "chain" },
+	watch = { "core" },
+	save = { "core" },
+	vip = { "core", "core2" },
+	ui = { "core" },
+	runtime = { "core", "core2" },
 }
 
 local manifest = {
-	version = VERSION, ref = REF, loaded = {}, failed = {}, disabled = {}, unversioned = {}, fromCache = false,
+	version = VERSION, ref = REF, loaded = {}, failed = {}, disabled = {}, unversioned = {},
+	missing_dep = {}, fromCache = false, order = {},
 }
 ENV.AluzSpyManifest = manifest
 
@@ -45,6 +71,12 @@ local function headerVersion(src)
 	return src:sub(1, 200):match("aluzspy@([%w%.%-]+)")
 end
 
+local function hashOf(s)
+	local h = 5381
+	for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967291 end
+	return string.format("%08x", h)
+end
+
 pcall(function()
 	if type(makefolder) == "function" and type(isfolder) == "function" and not isfolder("AluzSpy") then makefolder("AluzSpy") end
 end)
@@ -60,6 +92,7 @@ trace("start " .. VERSION)
 
 local mods = {}
 for _, m in ipairs(ORDER) do
+	manifest.order[#manifest.order + 1] = m[1]
 	if DISABLED[m[1]] and not m[2] then
 		manifest.disabled[#manifest.disabled + 1] = m[1]
 	else
@@ -91,6 +124,18 @@ local t0 = os.clock()
 while pending > 0 and os.clock() - t0 < 25 do task.wait(0.05) end
 trace("downloaded, pending " .. pending)
 
+local present = {}
+for _, m in ipairs(mods) do if m.src then present[m.name] = true end end
+
+local function depsOk(name)
+	local d = DEPS[name]
+	if not d then return true, nil end
+	for _, dep in ipairs(d) do
+		if not present[dep] then return false, dep end
+	end
+	return true, nil
+end
+
 local active, missing = {}, {}
 for _, m in ipairs(mods) do
 	if m.src then
@@ -100,6 +145,15 @@ for _, m in ipairs(mods) do
 			m.src = nil
 		elseif not ver then
 			manifest.unversioned[#manifest.unversioned + 1] = m.name
+		end
+	end
+	if m.src then
+		local okd, dep = depsOk(m.name)
+		if not okd then
+			manifest.failed[m.name] = "missing dependency " .. tostring(dep)
+			manifest.missing_dep[#manifest.missing_dep + 1] = m.name .. "->" .. tostring(dep)
+			warn("[AluzSpy loader] skipped " .. m.name .. " (missing dependency " .. tostring(dep) .. ")")
+			m.src = nil
 		end
 	end
 	if m.src then
@@ -156,12 +210,32 @@ if not fn then
 	return
 end
 
+local bundleBody = table.concat((function()
+	local t = {}
+	for _, m in ipairs(active) do t[#t + 1] = m.src end
+	return t
+end)(), "\n")
+manifest.hash = hashOf(bundleBody)
+manifest.modules = #active
+
 if not manifest.fromCache then
 	for _, m in ipairs(active) do manifest.loaded[#manifest.loaded + 1] = m.name end
 	if type(writefile) == "function" then
-		local parts = {}
-		for _, m in ipairs(active) do parts[#parts + 1] = m.src end
-		pcall(writefile, CACHE, table.concat(parts, "\n"))
+		pcall(writefile, CACHE, bundleBody)
+		pcall(writefile, "AluzSpy/manifest.json", (function()
+			local t = {}
+			t[#t + 1] = '{"version":"' .. VERSION .. '"'
+			t[#t + 1] = ',"ref":"' .. tostring(REF) .. '"'
+			t[#t + 1] = ',"hash":"' .. tostring(manifest.hash) .. '"'
+			t[#t + 1] = ',"modules":' .. tostring(#active)
+			t[#t + 1] = ',"loaded":['
+			for i, n in ipairs(manifest.loaded) do
+				if i > 1 then t[#t + 1] = "," end
+				t[#t + 1] = '"' .. n .. '"'
+			end
+			t[#t + 1] = ']}'
+			return table.concat(t)
+		end)())
 	end
 end
 

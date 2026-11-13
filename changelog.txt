@@ -1,3 +1,76 @@
+AluzSpy 1.2.3 Stable
+
+HOOK ENGINE v2
+- Hook registry: every hook has its own state, install strategy, attempt counter, last error and backoff.
+- Failed hooks are retried instead of being lost forever (F.hookWith no longer locks the target permanently).
+- Three install strategies are tried in order: __namecall metamethod, direct hookfunction, __newindex.
+- Install is single-flight per hook, so a boot stage and a health repair can never install the same hook twice.
+- Probe no longer depends on traffic: the health check verifies the installed wrapper instead of guessing.
+- Fallback install (rawset on the metatable) is registered in the registry, so it is no longer reported as broken.
+- Own hooks are excluded from the integrity scan, so the report no longer lists FireServer/HttpGet/loadstring as weak.
+- One capture path per remote call: FireServer/InvokeServer are captured by __namecall or by the direct hook, never both.
+- The 4 ms dedupe window is gone, so slow frames no longer duplicate every FireServer in the report.
+- HttpPost and HttpPostAsync are hooked as well, in both method and field call form.
+- The request global is re-resolved every 30 s, so a script replacing it no longer loses the hook.
+- AluzSpy.restore() restores __namecall, FireServer, InvokeServer, HttpGet, request and the rest to the original.
+
+DUMP ENGINE v2
+- Real disk budget: 96 MB total plus per-kind quotas (script, layer, deob, bytecode, index, other).
+- Over-quota writes evict the least important files first (duplicates and derived files before script sources).
+- The script admission quota is derived from the live script set and is released again when scripts are collected.
+- All derived output (deob, layers, index, vip report) goes through the same queue, so byte accounting is correct.
+- The dump writer keeps its accounting honest: D.bytes, D.kind and D.files always match the disk.
+- D.flush is budgeted and no longer hashes every pending job in one blocking pass.
+- New dump kinds are tracked separately, so the index shows what each file costs.
+
+VM DUMP
+- New vm module: Lua 5.1 bytecode disassembler with resolved constants, prototype tree and instruction listing.
+- Each dumped script with bytecode gets .bytecode.txt and .bytecode.json next to it.
+- Reports the VM score, the constant pool and every URL found inside the bytecode.
+- Runtime string capture watches string.char, string.sub and table.concat to catch strings after decryption.
+- Script sources that fail to decompile now fall back to bytecode analysis instead of nothing.
+
+OUTPUT
+- Redaction no longer masks version numbers: 1.2.3.4 stays readable, real IPs are still masked.
+- Redaction of a secret key now matches api_key, apikey, token, secret, password, cookie, sessionid and variants.
+- Redaction runs in chunks, so a large report no longer locks the frame for seconds.
+- The report gained MODULE STATE and VM / BYTECODE sections.
+- Stage results are separated: err is only set on a real error, the return value is reported as result.
+- FullScripts and the dump index are now included in vip redact.
+
+SELF TUNING
+- The capture budget follows the measured frame time and relaxes when the game is idle.
+- Memory usage is measured for real and the thresholds are expressed in KB.
+- Stale hook, remote and spam state is collected automatically.
+- The obfuscator fingerprint is remembered across sessions and boosts confidence on repeat sightings.
+- The fingerprint cache is keyed by source and URL, so a script fetched from luarmor is recognised again.
+
+LOADER
+- New vm module in the manifest, with a dependency check: a module whose dependency is missing is skipped loudly.
+- The manifest records the resolved version, module list and bundle hash in AluzSpy/manifest.json.
+- Optional module failure never blocks the boot, and required module failure reports the exact missing name.
+
+CONFIG
+- Schema 5 with automatic migration from every previous build.
+- Explicit module choices are remembered: the max profile no longer overrides what you turned off.
+- New switches: bytecode, vmdump, strings, selfTune, autoMax.
+
+API
+- AluzSpy.deobf(file) and AluzSpy.deobfAll() now exist under those names.
+- AluzSpy.reverseFind(text) is implemented.
+- AluzSpy.split(bool) is implemented instead of returning a stub.
+- New: AluzSpy.status(), AluzSpy.restore(), AluzSpy.vm("status"|"captured").
+- The documented command list matches the implementation exactly.
+
+TESTS
+- Headless test kit included: mock Roblox and executor API, boot harness, 17 white-box tests, API smoke test and benchmark.
+- All 17 white-box tests pass, the API smoke test reports 0 failures across 57 commands, and the bundle boots with no warnings.
+
+VERSION
+- 1.2.3-stable / aluzspy@1.2.3-stable
+
+---
+
 AluzSpy 1.2.3 Beta
 
 OUTPUT
