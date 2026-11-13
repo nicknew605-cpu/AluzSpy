@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load core2") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load core2") end end
 local okC2, errC2 = xpcall(function()
 	F.extra = {}
 	F.extraChips = {}
@@ -20,7 +20,7 @@ local okC2, errC2 = xpcall(function()
 	function F.applyMax()
 		CFG.profile = "max"
 		for k, v in pairs(F.defMods) do
-			if v ~= false then CFG.mods[k] = true end
+			if v ~= false and CFG.explicit[k] ~= true then CFG.mods[k] = true end
 		end
 		CFG.dump = true
 		CFG.code = true
@@ -33,6 +33,13 @@ local okC2, errC2 = xpcall(function()
 		CFG.redact = true
 		CFG.net = true
 		CFG.update = true
+		CFG.deob = true
+		CFG.bytecode = true
+		CFG.vmdump = true
+		CFG.strings = true
+		CFG.dumpSpill = true
+		CFG.selfTune = true
+		CFG.autoMax = true
 		F.cfgSave()
 		return CFG
 	end
@@ -62,7 +69,12 @@ local okC2, errC2 = xpcall(function()
 	end
 
 	function F.job(name, fn, onDone, timeout, prio)
-		if #J.queue >= 16 then return false end
+		if type(timeout) == "table" then
+			local o = timeout
+			timeout = o.timeout
+			prio = o.prio or prio
+		end
+		if #J.queue >= K.JOB_QUEUE then return false end
 		local job = {
 			name = tostring(name or "job"), co = coroutine.create(fn), done = onDone,
 			timeout = tonumber(timeout), prio = tonumber(prio) or 50,
@@ -78,17 +90,27 @@ local okC2, errC2 = xpcall(function()
 		local baseStage = F.stage
 		F.stage = function(name, prio, fn)
 			baseStage(name, prio, function(...)
+				local target = fn
+				for i = 1, #F.stages do
+					local e = F.stages[i]
+					if e[1] == name and e[4] then target = e[4] end
+				end
 				local args = pack(...)
 				local t0 = clock()
 				local r = pack(xpcall(function()
-					return fn(unpack(args, 1, args.n))
+					return target(unpack(args, 1, args.n))
 				end, function(e)
 					return tostring(e) .. "\n" .. debug.traceback()
 				end))
 				local dur = clock() - t0
+				local errTxt = nil
+				if not r[1] then errTxt = tostring(r[2]):sub(1, 400) end
+				local resTxt = "ok"
+				if not r[1] then resTxt = "error"
+				elseif r[2] ~= nil then resTxt = tostring(r[2]) end
 				F.debug.stages[name] = {
 					ok = r[1], dur = r2(dur), t = os.time(),
-					err = r[1] and nil or tostring(r[2]):sub(1, 400),
+					err = errTxt, result = resTxt,
 				}
 				if not r[1] then error(r[2]) end
 				return unpack(r, 2, r.n)
@@ -103,9 +125,10 @@ local okC2, errC2 = xpcall(function()
 		local w = {
 			t = os.time(), fps = r2(X.fps), mem = r2(X.memNow), q = qt - qh,
 			dumpJobs = #D.jobs, dumpPending = D.pending, busy = busy, load = X.load,
+			disk = D.bytes or 0, evicted = N.evict, dropQ = N.dropQ, tune = X.tune and X.tune.level or 0,
 		}
 		F.debug.watch[#F.debug.watch + 1] = w
-		if #F.debug.watch > 40 then table.remove(F.debug.watch, 1) end
+		if #F.debug.watch > 60 then table.remove(F.debug.watch, 1) end
 		if X.stall or X.fps < 8 or X.memNow > K.MEM_ABS * 0.9 then
 			pcall(FS.write, PATH.h("debug_watch.json"), F.enc({
 				watch = F.debug.watch, stages = F.debug.stages, errors = errMap,
@@ -118,6 +141,7 @@ local okC2, errC2 = xpcall(function()
 			stages = F.debug.stages, watch = F.debug.watch, errors = errMap,
 			stats = F.stats and F.stats() or nil, extra = F.ext(),
 			missing = F.missing and F.missing() or nil,
+			hooks = F.modules and F.modules().hooks or nil,
 		}
 		pcall(FS.write, PATH.h("debug_all.json"), F.enc(out) or "{}")
 		warn("[AluzSpy] debugAll saved: " .. tostring(PATH.h("debug_all.json")))
@@ -125,7 +149,11 @@ local okC2, errC2 = xpcall(function()
 	end
 
 	F.api.stageReport = function()
-		for k, v in pairs(F.debug.stages) do
+		local names = {}
+		for k in pairs(F.debug.stages) do names[#names + 1] = k end
+		table.sort(names)
+		for _, k in ipairs(names) do
+			local v = F.debug.stages[k]
 			warn(string.format("[AluzSpy] stage %s ok=%s dur=%s err=%s",
 				k, tostring(v.ok), tostring(v.dur), tostring(v.err)))
 		end
@@ -177,6 +205,38 @@ local okC2, errC2 = xpcall(function()
 		end
 	end)
 
+	local tuneWindow, tuneCount, tuneSum = {}, 0, 0
+
+	F.onTick(function(now)
+		if not CFG.selfTune then return end
+		if now - (X.lastTune or 0) < 3 then return end
+		X.lastTune = now
+		local n = 0
+		for _ in pairs(tuneWindow) do n = n + 1 end
+		if n == 0 then return end
+		local avg = tuneSum / n
+		local lvl = X.tune.level or 0
+		if avg > 0.0026 and lvl < 3 then
+			lvl = lvl + 1
+		elseif avg < 0.0012 and lvl > 0 then
+			lvl = lvl - 1
+		end
+		X.tune.level = lvl
+		X.tune.samples = n
+		X.tune.avg = r2(avg * 1000)
+		tuneWindow = {}
+		tuneCount, tuneSum = 0, 0
+		F.budgetScale = lvl >= 2 and 0.5 or (lvl == 1 and 0.75 or 1)
+	end)
+
+	F.onTick(function(now)
+		if now - (X.lastLearn or 0) < 45 then return end
+		X.lastLearn = now
+		if F.learn then pcall(F.learn) end
+		if F.retryHooks then pcall(F.retryHooks) end
+		if F.gcStale then pcall(F.gcStale) end
+	end)
+
 	F.extra.jobs = function()
 		return { running = J.name, queued = #J.queue }
 	end
@@ -184,7 +244,7 @@ local okC2, errC2 = xpcall(function()
 	F.extra.debug = function()
 		local n = 0
 		for _ in pairs(F.debug.stages) do n = n + 1 end
-		return { stages = n, watch = #F.debug.watch }
+		return { stages = n, watch = #F.debug.watch, tune = X.tune and X.tune.level or 0 }
 	end
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()

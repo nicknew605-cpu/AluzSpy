@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load core") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load core") end end
 local SV = setmetatable({}, { __index = function(t, k)
 	local v = game:GetService(k)
 	rawset(t, k, v)
@@ -20,7 +20,7 @@ do
 	end
 end
 
-local VERSION = "1.2.3-beta"
+local VERSION = "1.2.3-stable"
 local clock = os.clock
 local pack = table.pack
 local unpack = table.unpack or unpack
@@ -38,12 +38,14 @@ for _, n in ipairs({
 	"getnilinstances", "getscripts", "getloadedmodules", "request", "loadstring", "loadfile", "dofile",
 	"getconnections", "firesignal", "fireclickdetector", "fireproximityprompt", "firetouchinterest",
 	"setfenv", "getfenv", "getupvalues", "getconstants", "getprotos", "getscriptclosure", "getscripthash",
-	"getgc", "getinstances", "getrawmetatable", "iscclosure",
+	"getgc", "getinstances", "getrawmetatable", "iscclosure", "filtergc", "getrunningscripts",
 }) do
 	CAP[n] = type(genv[n]) == "function"
 end
 CAP.websocket = type(genv.WebSocket) == "table" or type(genv.websocket) == "table"
 CAP.deobfuscate, CAP.reverse, CAP.vip = false, false, false
+CAP.bytecode = type(genv.getscriptbytecode) == "function"
+CAP.vm = true
 
 local PATH = { dir = "AluzSpy", dumpDir = "AluzSpy/Dump", hooksDir = "AluzSpy/Hooks", ok = false }
 do
@@ -72,15 +74,20 @@ end
 PATH.flag = PATH.f(".boot")
 PATH.cfg = PATH.f("config.json")
 PATH.crash = PATH.f("crash.txt")
-PATH.session = PATH.h("Hooks_" .. game.PlaceId .. "_" .. os.date("%Y%m%d_%H%M%S") .. ".json")
-PATH.sessionTxt = PATH.h("Hooks_" .. game.PlaceId .. "_" .. os.date("%Y%m%d_%H%M%S") .. ".txt")
 PATH.tag = os.date("%H%M%S")
 
 local K = {
-	LOGCAP = 2500, BUCKET_MAX = 400, BUCKET_RATE = 220, ATT_CAP = 250, RF_CAP = 180,
-	DUMP_MAX = 600, DUMP_FILE_MAX = 12582912, DUMP_PEND_MAX = 37748736, DUMP_TOTAL = 100663296,
-	MEM_ABS = 2800, MEM_GROW = 1000, SCRIPT_CAP = 600, SCRIPT_RESERVE = 150,
+	LOGCAP = 3000, BUCKET_MAX = 500, BUCKET_RATE = 260, ATT_CAP = 320, RF_CAP = 220,
+	DUMP_MAX = 900, DUMP_FILE_MAX = 12582912, DUMP_PEND_MAX = 41943040,
+	MEM_ABS = 45000, MEM_GROW = 12000, MEM_SOFT = 30000,
+	SCRIPT_CAP = 900, SCRIPT_RESERVE = 300,
+	DUMP_TOTAL = 100663296, DISK_KIND = {
+		script = 50331648, layer = 18874368, deob = 8388608,
+		index = 4194304, bytecode = 12582912, other = 8388608,
+	},
+	STORE_MAX = 16777216, JOB_QUEUE = 24, JOB_TIMEOUT = 120,
 }
+K.DISK_TOTAL = K.DUMP_TOTAL
 local QCAP, WIN = 2048, 1.0
 
 local S = { nc = false, dump = true }
@@ -92,9 +99,10 @@ end
 local CFG = {
 	nc = true, dump = true, code = true, tree = true, callerDump = true, autoScripts = true, update = true,
 	decode = true, sandbox = false, net = true,
-	schema = 4, ver = "", profile = "max", autoDeobf = true, autoReverse = true,
+	schema = 5, ver = "", profile = "max", autoDeobf = true, autoReverse = true,
 	redact = true, redactIds = false, protected = {}, thr = {},
-	mods = {}, crashes = {},
+	mods = {}, crashes = {}, explicit = {}, dumpSpill = true, deob = true,
+	bytecode = true, vmdump = true, strings = true, selfTune = true, autoMax = true,
 }
 local alive, busy = true, false
 local T0 = clock()
@@ -105,7 +113,7 @@ local oldNc, lastNcSelf, lastNcT = nil, nil, 0
 local weak = { __mode = "k" }
 local N = {
 	total = 0, logged = 0, merged = 0, sampled = 0, supp = 0, bucket = 0, remotes = 0,
-	dropQ = 0, err = 0, seq = 0, att = 0, netCount = 0, srcCount = 0,
+	dropQ = 0, err = 0, seq = 0, att = 0, netCount = 0, srcCount = 0, cap = 0, dup = 0, evict = 0,
 }
 local X = {
 	dirty = false, lastAuto = -10, lastTick = clock(), lastMem = -100, lastRf = 0, lastWd = 0, lastFps = -100,
@@ -113,6 +121,7 @@ local X = {
 	sysM = nil, sysT = 0, httpUrl = nil, netRecs = {}, srcRecs = {}, chunk = 0, cof = setmetatable({}, weak),
 	nb = {}, nbq = {}, rules = false, block = {}, mod = {}, probe = nil, probeSelf = nil, probeHit = false,
 	wdFail = 0, wdN = 0, fps = 60, load = 0, memNow = 0, lowN = 0, spam = {}, recovered = nil, dt = 1,
+	seq = 0, capSeq = 0, tune = { level = 0, samples = 0, sum = 0 }, ev = 0, lastTune = 0, lastLearn = 0,
 }
 local logs = {}
 local stC, stS, info = setmetatable({}, weak), setmetatable({}, weak), setmetatable({}, weak)
@@ -125,7 +134,7 @@ local RF = {
 local D = {
 	seen = {}, n = 0, list = {}, q = {}, h = 1, t = 0, pending = 0, skipped = 0, fail = 0,
 	files = {}, bytes = 0, jobs = {}, sd = setmetatable({}, weak), sdf = setmetatable({}, weak), sdn = 0, sq = {},
-	sqp = setmetatable({}, weak), fails = {},
+	sqp = setmetatable({}, weak), fails = {}, kind = {}, live = 0, ev = 0,
 }
 local BAN = { set = {}, list = {}, safe = false, disabled = {} }
 local FS = {}
@@ -135,10 +144,11 @@ local OBS, REG = {}, {}
 local F = { h = {}, ticks = {}, stages = {}, defMods = {
 	fn = true, s2c = true, sys = true, net = true, http = true, ls = true, cb = true, ni = true, rw = true, ws = true,
 	req = true, hx = true,
-} }
+}, hooks = {}, deps = {} }
 
 F.extra = F.extra or {}
 F.api = F.api or {}
+F.ours = F.ours or setmetatable({}, { __mode = "k" })
 
 for k, v in pairs(F.defMods) do CFG.mods[k] = v end
 
@@ -149,8 +159,8 @@ function F.stats()
 	local muted = 0
 	for _ in pairs(muteList or {}) do muted = muted + 1 end
 	local hooks = 0
-	for _, h in pairs(F.h) do
-		if type(h) == "function" then hooks = hooks + 1 end
+	for _, h in pairs(F.hooks) do
+		if type(h) == "table" and h.installed then hooks = hooks + 1 end
 	end
 	return {
 		total = N.total, calls = N.total, logged = N.logged, merged = N.merged, sampled = N.sampled,
@@ -161,13 +171,14 @@ function F.stats()
 		jobs = #D.jobs, queue = qt - qh,
 		fps = floor(X.fps * 100 + 0.5) / 100, mem = floor(X.memNow * 100 + 0.5) / 100,
 		uptime = floor((clock() - T0) * 100 + 0.5) / 100, profile = CFG.profile,
+		evicted = N.evict, dupes = N.dup, captured = N.cap, version = VERSION,
 	}
 end
 
 function F.hookCount()
 	local n = 0
-	for _, h in pairs(F.h) do
-		if type(h) == "function" then n = n + 1 end
+	for _, h in pairs(F.hooks) do
+		if type(h) == "table" and h.installed then n = n + 1 end
 	end
 	return n
 end
@@ -191,6 +202,11 @@ function FS.del(name)
 	if type(delfile) == "function" then
 		pcall(delfile, name)
 	end
+end
+function FS.size(name)
+	if type(isfile) ~= "function" then return 0 end
+	local ok, r = pcall(isfile, name)
+	return (ok and r == true) and 1 or 0
 end
 
 function F.enc(t)
@@ -218,6 +234,8 @@ function F.cfgLoad()
 			CFG[k] = nv
 		end
 	end
+	if type(CFG.explicit) ~= "table" then CFG.explicit = {} end
+	if type(CFG.mods) ~= "table" then CFG.mods = {} end
 end
 
 function F.cfgSave()
@@ -227,6 +245,7 @@ end
 function F.reset()
 	CFG.crashes = {}
 	CFG.mods = {}
+	CFG.explicit = {}
 	for k, v in pairs(F.defMods) do CFG.mods[k] = v end
 	F.cfgSave()
 end
@@ -251,7 +270,7 @@ local function noteErr(err)
 	else
 		local n = 0
 		for _ in pairs(errMap) do n = n + 1 end
-		if n < 20 then errMap[msg] = 1 end
+		if n < 24 then errMap[msg] = 1 end
 	end
 end
 
@@ -286,21 +305,17 @@ do
 		local stage = type(txt) == "string" and txt:match("^([%w%-_]+)") or nil
 		local ts = type(txt) == "string" and tonumber(txt:match("\n(%d+)")) or nil
 		if not ts or math.abs(os.time() - ts) < 900 then
-			
-			
 			local culprit = stage
 			if stage == "net-active" then culprit = "net" end
 			if stage == "nc" or stage == "namecall" then culprit = "nc" end
 			if culprit and culprit ~= "boot" and culprit ~= "net-active" then
 				CFG.crashes[culprit] = (CFG.crashes[culprit] or 0) + 1
-				
 				if CFG.crashes[culprit] >= 3 then
 					CFG.mods[culprit] = false
 					BAN.set[culprit] = true
 					BAN.disabled[culprit] = true
 					BAN.safe = true
 				else
-					
 					BAN.safe = false
 				end
 			end
@@ -459,6 +474,11 @@ function F.nbPush(body, url)
 	end
 end
 
+function F.nextCap()
+	X.capSeq = X.capSeq + 1
+	return X.capSeq
+end
+
 function F.capSrc(tag, src, id, parent, url)
 	enqueue({ k = 7, tag = tag, src = src, id = id, par = parent, url = url, t = clock() })
 end
@@ -500,9 +520,31 @@ function F.capNet(tag, url, meth, res, sent, hdr)
 	})
 end
 
-function F.hookWith(fn, make, useNc)
-	if type(fn) ~= "function" or seenFn[fn] or not hookfunction then return false end
-	seenFn[fn] = true
+function F.reg(name, info)
+	local h = F.hooks[name]
+	if not h then
+		h = {
+			name = name, installed = false, attempts = 0, lastErr = nil,
+			nextTry = 0, original = nil, wrapper = nil, probe = nil, target = nil,
+			restorable = false, kind = "fn",
+		}
+		F.hooks[name] = h
+	end
+	if type(info) == "table" then
+		for k, v in pairs(info) do h[k] = v end
+	end
+	return h
+end
+
+function F.hookWith(fn, make, useNc, name)
+	if type(fn) ~= "function" or not hookfunction then return false end
+	local st = name and F.reg(name) or nil
+	if seenFn[fn] then
+		if st and not st.installed then
+			st.attempts = st.attempts + 1
+		end
+		return false
+	end
 	local holder = {}
 	if clonefunction then
 		local okc, c = pcall(clonefunction, fn)
@@ -511,9 +553,81 @@ function F.hookWith(fn, make, useNc)
 	local h = make(holder)
 	if useNc then h = nc(h) end
 	local ok, o = pcall(hookfunction, fn, h)
-	if not ok then return false end
+	if not ok then
+		seenFn[fn] = nil
+		if st then
+			st.attempts = st.attempts + 1
+			st.lastErr = "hookfunction failed"
+			st.nextTry = clock() + 2 * st.attempts
+		end
+		return false
+	end
 	if type(o) == "function" then holder.old = o end
-	return holder.old ~= nil
+	if holder.old == nil then
+		seenFn[fn] = nil
+		if st then
+			st.attempts = st.attempts + 1
+			st.lastErr = "no original returned"
+			st.nextTry = clock() + 2 * st.attempts
+		end
+		return false
+	end
+	seenFn[fn] = true
+	F.ours[h] = true
+	F.ours[fn] = true
+	if holder.old then F.ours[holder.old] = true end
+	if st then
+		st.installed = true
+		st.attempts = 0
+		st.lastErr = nil
+		st.original = holder.old
+		st.wrapper = h
+		st.target = fn
+		st.restorable = true
+		st.restore = function()
+			if not st.target or not st.original then return false end
+			return (pcall(hookfunction, st.target, st.original))
+		end
+	end
+	return true
+end
+
+function F.unhook(name)
+	local st = F.hooks[name]
+	if not st then return false end
+	if st.restore then
+		local ok = pcall(st.restore)
+		if ok then
+			st.installed = false
+			st.original = nil
+			st.wrapper = nil
+			return true
+		end
+	end
+	return false
+end
+
+function F.restore()
+	local n = 0
+	for name in pairs(F.hooks) do
+		if F.unhook(name) then n = n + 1 end
+	end
+	if oldNc and getrawmetatable then
+		local ok, mt = pcall(getrawmetatable, game)
+		if ok and type(mt) == "table" then
+			pcall(function()
+				if setreadonly then setreadonly(mt, false) elseif make_writeable then make_writeable(mt) end
+				rawset(mt, "__namecall", oldNc)
+				if setreadonly then setreadonly(mt, true) end
+			end)
+			oldNc = nil
+			n = n + 1
+		end
+	end
+	S.nc = false
+	MOD.nc = false
+	INST.nc = false
+	return n
 end
 
 handle = function(e, now)
@@ -587,18 +701,19 @@ function F.on(kind, name, fn, prio)
 end
 
 function F.budget()
+	local scale = F.budgetScale or 1
 	local fill = (qt - qh) / math.max(1, QCAP)
 	if fill > 0.85 then
 		local drop = math.floor((qt - qh) * 0.5)
 		qh = qh + drop
 		N.dropQ = N.dropQ + drop
-		return 0.0008
+		return 0.0008 * scale
 	end
-	if fill > 0.6 then return 0.0012 end
-	if X.fps < 20 then return 0.0008 end
-	if X.fps < 35 then return 0.0012 end
-	if X.load and X.load > 2 then return 0.0015 end
-	return 0.0022
+	if fill > 0.6 then return 0.0012 * scale end
+	if X.fps < 20 then return 0.0008 * scale end
+	if X.fps < 35 then return 0.0012 * scale end
+	if X.load and X.load > 2 then return 0.0015 * scale end
+	return 0.0022 * scale
 end
 
 function F.register(name, info)
@@ -619,7 +734,16 @@ function F.modules()
 	local stages = {}
 	for i = 1, #F.stages do stages[F.stages[i][1]] = F.stages[i].state or "pending" end
 	local m = genv.AluzSpyManifest
-	return { registry = out, stages = stages, manifest = type(m) == "table" and m or nil }
+	local hooks = {}
+	for n, h in pairs(F.hooks) do
+		hooks[n] = {
+			installed = h.installed and true or false,
+			attempts = h.attempts or 0,
+			err = h.lastErr,
+			target = h.target,
+		}
+	end
+	return { registry = out, stages = stages, manifest = type(m) == "table" and m or nil, hooks = hooks }
 end
 
 function F.apiMerge(t)
@@ -628,7 +752,7 @@ function F.apiMerge(t)
 end
 
 function F.migrate()
-	if CFG.ver == VERSION and (CFG.schema or 0) >= 4 then return nil end
+	if CFG.ver == VERSION and (CFG.schema or 0) >= 5 then return nil end
 	local prev = CFG.ver
 	for k, v in pairs(F.defMods) do
 		if CFG.mods[k] == nil then CFG.mods[k] = v end
@@ -641,8 +765,18 @@ function F.migrate()
 		CFG.autoScripts = true
 		CFG.profile = "max"
 	end
+	if (CFG.schema or 0) < 5 then
+		CFG.bytecode = true
+		CFG.vmdump = true
+		CFG.strings = true
+		CFG.selfTune = true
+		CFG.autoMax = true
+		CFG.dumpSpill = true
+		CFG.deob = true
+		if type(CFG.explicit) ~= "table" then CFG.explicit = {} end
+	end
 	CFG.ver = VERSION
-	CFG.schema = 4
+	CFG.schema = 5
 	F.cfgSave()
 	return prev
 end
@@ -651,13 +785,15 @@ function D.admit(sc, p)
 	if D.sd[sc] then return false end
 	local cap = K.SCRIPT_CAP
 	if p == 1 then cap = cap + K.SCRIPT_RESERVE end
-	return D.sdn < cap
+	local live = 0
+	for _ in pairs(D.sd) do live = live + 1 end
+	return live < cap
 end
 
 function D.push(sc, p)
 	p = p or 2
 	D.sd[sc] = true
-	D.sdn = D.sdn + 1
+	D.sqn = (D.sqn or 0) + 1
 	D.sqp[sc] = p
 	local sq = D.sq
 	local i = #sq
@@ -669,11 +805,32 @@ function D.pop()
 	return table.remove(D.sq, 1)
 end
 
+function F.memNow()
+	local kb = 0
+	if type(collectgarbage) == "function" then
+		local ok, v = pcall(collectgarbage, "count")
+		if ok and type(v) == "number" then kb = v end
+	end
+	if kb <= 0 then
+		kb = (D.storeBytes or 0) / 1024 + (qt - qh) * 2
+	end
+	return kb
+end
+
 function F.tick(now)
 	local dt = now - X.lastTick
 	if dt < 0.5 then dt = 0.5 end
 	X.dt = dt
 	X.lastTick = now
+	if now - X.lastMem >= 2 then
+		X.lastMem = now
+		X.memNow = F.memNow()
+		if X.memNow > K.MEM_ABS then
+			X.lowN = X.lowN + 1
+		else
+			X.lowN = 0
+		end
+	end
 	for i = 1, #F.ticks do
 		local ok, err = pcall(F.ticks[i], now, dt)
 		if not ok then noteErr(err) end
@@ -690,7 +847,7 @@ function F.tick(now)
 		end
 		if changed then F.cfgSave() end
 	end
-	uiCount()
+	if uiCount then uiCount() end
 end
 
 function F.stage(name, prio, fn)
@@ -725,15 +882,24 @@ function F.boot()
 end
 
 function F.setMod(name, on)
-	CFG.mods[name] = on and true or false
 	if on then
+		local ok = true
 		if IN[name] then
-			local ok, res = pcall(IN[name])
-			if not ok then noteErr(res) end
+			local o, res = pcall(IN[name])
+			if not o then
+				ok = false
+				noteErr(res)
+			elseif res == false then
+				ok = false
+			end
 		end
+		CFG.mods[name] = ok and true or false
+		MOD[name] = ok and true or false
 	else
+		CFG.mods[name] = false
 		MOD[name] = false
 	end
+	CFG.explicit[name] = true
 	F.cfgSave()
 	return MOD[name]
 end

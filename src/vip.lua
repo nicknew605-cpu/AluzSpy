@@ -1,10 +1,10 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load vip") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load vip") end end
 local okVP, errVP = xpcall(function()
 	CAP.vip = true
-	F.register("vip", { ver = "1.2.3-beta" })
+	F.register("vip", { ver = "1.2.3-stable" })
 
-	local RISK = { "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx", "ac", "sd", "ps", "tc" }
-	local ALL = { "fn", "s2c", "sys", "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx", "ac", "hc", "sd", "ps", "tc" }
+	local RISK = { "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx", "ac", "sd", "ps", "tc", "st" }
+	local ALL = { "fn", "s2c", "sys", "net", "http", "ls", "cb", "ni", "rw", "ws", "req", "hx", "ac", "hc", "sd", "ps", "tc", "st" }
 
 	local function modset(on, off)
 		local t = {}
@@ -16,15 +16,15 @@ local okVP, errVP = xpcall(function()
 	local PROFILES = {
 		lite = {
 			mods = modset(false, { "fn", "hc" }),
-			cfg = { decode = false, sandbox = false, net = false, autoDeobf = false, autoReverse = false, autoScripts = false, callerDump = false, code = false, tree = false },
+			cfg = { decode = false, sandbox = false, net = false, autoDeobf = false, autoReverse = false, autoScripts = false, callerDump = false, code = false, tree = false, vmdump = false, strings = false, bytecode = false },
 		},
 		standard = {
-			mods = modset(true, { "ps", "tc" }),
-			cfg = { decode = false, sandbox = false, net = false, autoDeobf = false, autoReverse = false, autoScripts = false, callerDump = true, code = true, tree = true },
+			mods = modset(true, { "ps", "tc", "st" }),
+			cfg = { decode = false, sandbox = false, net = false, autoDeobf = false, autoReverse = false, autoScripts = false, callerDump = true, code = true, tree = true, vmdump = true, bytecode = true, strings = true },
 		},
 		max = {
 			mods = modset(true, { "ps", "tc" }),
-			cfg = { decode = true, sandbox = false, net = true, autoDeobf = true, autoReverse = true, autoScripts = true, callerDump = true, code = true, tree = true, dumpSpill = true, deob = true, nc = true },
+			cfg = { decode = true, sandbox = false, net = true, autoDeobf = true, autoReverse = true, autoScripts = true, callerDump = true, code = true, tree = true, dumpSpill = true, deob = true, nc = true, vmdump = true, bytecode = true, strings = true, selfTune = true },
 		},
 		safe = {
 			mods = (function()
@@ -32,11 +32,12 @@ local okVP, errVP = xpcall(function()
 				for _, k in ipairs(RISK) do t[k] = false end
 				return t
 			end)(),
-			cfg = { decode = false, sandbox = false, net = false, autoDeobf = false, autoReverse = false, autoScripts = false, callerDump = false },
+			cfg = { decode = false, sandbox = false, net = false, autoDeobf = false, autoReverse = false, autoScripts = false, callerDump = false, vmdump = false, strings = false, bytecode = false },
 		},
 	}
 
-	local V = { scanning = false, lastScan = nil, lastReport = nil, redacted = {}, busyRedact = false }
+	local V = { scanning = false, lastScan = nil, lastReport = nil, redacted = {}, busyRedact = false, passes = 0 }
+	F.vipState = V
 
 	local function note(t)
 		if F.notify then F.notify(t) end
@@ -86,12 +87,14 @@ local okVP, errVP = xpcall(function()
 			reverse = F.reverseSummary and F.reverseSummary() and { scans = F.reverseSummary().scans, auto = CFG.autoReverse == true } or nil,
 			redaction = F.redactStats and F.redactStats() or { on = false },
 			scanning = V.scanning, last_scan = V.lastScan, last_report = V.lastReport, safe_boot = BAN.safe,
+			vm = F.extra and F.extra.vm and F.extra.vm() or nil,
 		}
 	end
 
 	local function scan()
 		if V.scanning then return "running" end
 		V.scanning = true
+		V.passes = V.passes + 1
 		task.spawn(function()
 			S.dump = true
 			CFG.dump = true
@@ -100,7 +103,7 @@ local okVP, errVP = xpcall(function()
 			local t0 = clock()
 			while alive and (D.running or #D.sq > 0) and clock() - t0 < 90 do task.wait(1) end
 			if F.api.decodeAll then pcall(F.api.decodeAll) end
-			if F.api.deobfAll then pcall(F.api.deobfAll) end
+			if F.api.deobAll then pcall(F.api.deobAll) end
 			task.wait(3)
 			if F.api.reverse then pcall(F.api.reverse) end
 			V.scanning = false
@@ -118,17 +121,19 @@ local okVP, errVP = xpcall(function()
 			status = F.vipStatus(), modules = F.modules and F.modules() or nil,
 			deobf = F.deobfReport and F.deobfReport() or nil, reverse = F.reverseSummary and F.reverseSummary() or nil,
 			dumpfail = F.extra.dumpfail and F.extra.dumpfail() or nil, health = F.extra.health and F.extra.health() or nil,
+			vm = F.extra and F.extra.vm and F.extra.vm() or nil,
+			stats = F.stats and F.stats() or nil,
 		}
 		local js = F.enc(summary)
 		if js then
 			if CFG.redact and F.redact then
-				local okr, r = pcall(F.redact, js)
+				local okr, r = pcall(F.redactChunked and F.redactChunked(js) or F.redact(js))
 				if okr and type(r) == "string" then js = r end
 			end
 			local f = "vip_" .. os.date("%H%M%S") .. ".json"
 			D.pending = D.pending + #js
 			D.t = D.t + 1
-			D.q[D.t] = { f = f, s = js }
+			D.q[D.t] = { f = f, s = js, k = "index" }
 			V.lastReport = f
 		end
 		note("vip report: session " .. tostring(PATH.session))
@@ -146,13 +151,13 @@ local okVP, errVP = xpcall(function()
 				buf[#buf + 1] = line
 				size = size + #line
 				if size >= 262144 then
-					parts[#parts + 1] = F.redact(table.concat(buf))
+					parts[#parts + 1] = F.redactChunked and F.redactChunked(table.concat(buf)) or F.redact(table.concat(buf))
 					buf, size = {}, 0
-					F.Y()
+					if F.Y then F.Y() end
 				end
 			end
 		end
-		if #buf > 0 then parts[#parts + 1] = F.redact(table.concat(buf)) end
+		if #buf > 0 then parts[#parts + 1] = F.redactChunked and F.redactChunked(table.concat(buf)) or F.redact(table.concat(buf)) end
 		local out = path:gsub("(%.[%w]+)$", ".redacted%1")
 		if out == path then out = path .. ".redacted" end
 		return pcall(writefile, out, table.concat(parts)) and out or false
@@ -167,8 +172,9 @@ local okVP, errVP = xpcall(function()
 		local files = {}
 		if PATH.session then files[#files + 1] = PATH.session end
 		if PATH.sessionTxt then files[#files + 1] = PATH.sessionTxt end
-		if D.n > 0 and PATH.dumpfile then files[#files + 1] = PATH.dumpfile end
+		if D.fullPath then files[#files + 1] = D.fullPath end
 		if D.indexPath then files[#files + 1] = D.indexPath end
+		if D.indexTxt then files[#files + 1] = D.indexTxt end
 		local ok = F.job("redact", function()
 			local done = {}
 			for _, p in ipairs(files) do
@@ -212,13 +218,18 @@ local okVP, errVP = xpcall(function()
 				note("vip safe mode")
 				return ok
 			end
-			warn("[AluzSpy] vip commands: status, profile, scan, report, redact, safe")
+			if cmd == "max" then
+				local ok = apply("max")
+				note("vip max mode")
+				return ok
+			end
+			warn("[AluzSpy] vip commands: status, profile, scan, report, redact, safe, max")
 			return nil
 		end,
 	})
 
 	F.extra.vip = function()
-		return { profile = CFG.profile, line = F.vipLine() }
+		return { profile = CFG.profile, line = F.vipLine(), passes = V.passes }
 	end
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()

@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load hooks") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load hooks") end end
 do
 	local HS = SV.HttpService
 	local INTEREST = {
@@ -8,6 +8,7 @@ do
 		HttpGet = 4, HttpGetAsync = 4, HttpPost = 4, HttpPostAsync = 4,
 		GetAsync = 4, PostAsync = 4, RequestAsync = 4,
 	}
+	local HTTPF = { HttpGet = 1, HttpGetAsync = 1, HttpPost = 1, HttpPostAsync = 1, GetAsync = 1, PostAsync = 1, RequestAsync = 1 }
 
 	local function sysReason(m)
 		if m == "Kick" then return "kick" end
@@ -115,6 +116,17 @@ do
 		return 0
 	end
 
+	local fnOwns = {}
+
+	function F.fnOwns(inst)
+		if type(inst) ~= "Instance" then return false end
+		local cn = inst.ClassName
+		if cn == "RemoteEvent" then return fnOwns.fire == true end
+		if cn == "UnreliableRemoteEvent" then return fnOwns.unrel == true end
+		if cn == "RemoteFunction" then return fnOwns.invoke == true end
+		return false
+	end
+
 	function F.capCall(self, m, ex, ...)
 		if self == X.probeSelf then
 			X.probeHit = true
@@ -130,7 +142,8 @@ do
 		end
 		local sc = nil
 		if not ex then sc = getCS() end
-		return enqueue({ k = 1, d = "C2S", s = self, m = m, a = pack(...), t = clock(), sc = sc, ex = ex })
+		N.cap = N.cap + 1
+		return enqueue({ k = 1, d = "C2S", s = self, m = m, a = pack(...), t = clock(), sc = sc, ex = ex, cid = F.nextCap() })
 	end
 
 	function F.capSys(self, m, ...)
@@ -149,24 +162,24 @@ do
 		if not kind then
 			return oldNc(self, ...)
 		end
-		if kind == 1 then
-			if S.nc and MOD.nc then
-				pcall(capCall, self, m, ckc(), ...)
+		if kind == 1 or kind == 2 then
+			if not (MOD.fn and F.fnOwns(self)) then
+				if S.nc and MOD.nc then
+					if kind == 1 then
+						pcall(capCall, self, m, ckc(), ...)
+					else
+						local okc, e = pcall(capCall, self, m, ckc(), ...)
+						if okc and e then
+							setnm(m)
+							local r = pack(oldNc(self, ...))
+							pcall(enqueue, { k = 2, r = e, v = r })
+							return unpack(r, 1, r.n)
+						end
+					end
+				end
 			end
 			setnm(m)
 			return oldNc(self, ...)
-		elseif kind == 2 then
-			local ent = nil
-			if S.nc and MOD.nc then
-				local okc, e = pcall(capCall, self, m, ckc(), ...)
-				if okc then ent = e end
-			end
-			setnm(m)
-			local r = pack(oldNc(self, ...))
-			if ent then
-				pcall(enqueue, { k = 2, r = ent, v = r })
-			end
-			return unpack(r, 1, r.n)
 		elseif kind == 3 then
 			pcall(capSys, self, m, ...)
 			setnm(m)
@@ -191,7 +204,7 @@ do
 		if RF.isW[cb] then return cb end
 		local w = function(...)
 			if MOD.cb and alive and not busy then
-				local ent = enqueue({ k = 1, d = "S2C", s = rf, m = "OnClientInvoke", a = pack(...), t = clock() })
+				local ent = enqueue({ k = 1, d = "S2C", s = rf, m = "OnClientInvoke", a = pack(...), t = clock(), cid = F.nextCap() })
 				if ent then
 					local r = pack(cb(...))
 					enqueue({ k = 2, r = ent, v = r })
@@ -210,7 +223,7 @@ do
 		if not ok or type(cb) ~= "function" then return end
 		if RF.isW[cb] or RF.wrap[rf] == cb then return end
 		local cnt = RF.count[rf] or 0
-		if cnt >= 4 then return end
+		if cnt >= 6 then return end
 		local w = F.wrapInvoke(rf, cb)
 		if pcall(function() rf.OnClientInvoke = w end) then
 			RF.wrap[rf] = w
@@ -234,8 +247,7 @@ do
 
 	local function makeFire(holder)
 		return function(self, ...)
-			if MOD.fn and S.nc and alive and not busy
-				and not (lastNcSelf == self and clock() - lastNcT < 0.004) then
+			if MOD.fn and S.nc and alive and not busy then
 				local ok = pcall(capCall, self, "FireServer", ckc(), ...)
 				if not ok then fault("fn") end
 			end
@@ -245,8 +257,7 @@ do
 
 	local function makeInvoke(holder)
 		return function(self, ...)
-			if MOD.fn and S.nc and alive and not busy
-				and not (lastNcSelf == self and clock() - lastNcT < 0.004) then
+			if MOD.fn and S.nc and alive and not busy then
 				local ok, ent = pcall(capCall, self, "InvokeServer", ckc(), ...)
 				if ok and ent then
 					local r = pack(holder.old(self, ...))
@@ -276,6 +287,10 @@ do
 		local wrap = F.ncHook
 		local ok, old = pcall(hookmetamethod, game, "__namecall", wrap)
 		if not ok or type(old) ~= "function" then
+			local st = F.reg("nc")
+			st.attempts = (st.attempts or 0) + 1
+			st.lastErr = "hookmetamethod failed"
+			st.nextTry = clock() + 2 * st.attempts
 			return false
 		end
 		oldNc = old
@@ -283,6 +298,19 @@ do
 		F.ncInstalled = wrap
 		INST.nc = true
 		MOD.nc = true
+		local st = F.reg("nc")
+		st.installed = true
+		st.attempts = 0
+		st.lastErr = nil
+		st.target = "__namecall"
+		st.kind = "metamethod"
+		st.probe = function()
+			if not getrawmetatable then return true end
+			local om, mt = pcall(getrawmetatable, game)
+			if not om or type(mt) ~= "table" then return true end
+			local cur = rawget(mt, "__namecall")
+			return cur == F.ncWrap or cur == F.ncInstalled or cur == F.ncHook
+		end
 		return true
 	end
 
@@ -293,16 +321,23 @@ do
 		end
 		if not hookfunction then return false end
 		local any = false
-		local function try(cls, method, make, useNc)
+		local function try(cls, method, make, useNc, tag)
 			local ok, inst = pcall(Instance.new, cls)
 			if not ok or typeof(inst) ~= "Instance" then return end
 			local okf, fn = pcall(function() return inst[method] end)
 			pcall(inst.Destroy, inst)
-			if okf and F.hookWith(fn, make, useNc) then any = true end
+			if okf and F.hookWith(fn, make, useNc, tag) then any = true end
 		end
-		try("RemoteEvent", "FireServer", makeFire, true)
-		try("UnreliableRemoteEvent", "FireServer", makeFire, true)
-		try("RemoteFunction", "InvokeServer", makeInvoke, false)
+		try("RemoteEvent", "FireServer", makeFire, true, "fnFire")
+		try("UnreliableRemoteEvent", "FireServer", makeFire, true, "fnUnrel")
+		try("RemoteFunction", "InvokeServer", makeInvoke, false, "fnInvoke")
+		local st = F.reg("fn")
+		st.installed = any
+		st.kind = "function"
+		st.target = "FireServer/InvokeServer"
+		fnOwns.fire = F.hooks.fnFire and F.hooks.fnFire.installed or false
+		fnOwns.unrel = F.hooks.fnUnrel and F.hooks.fnUnrel.installed or false
+		fnOwns.invoke = F.hooks.fnInvoke and F.hooks.fnInvoke.installed or false
 		if any then
 			INST.fn = true
 			MOD.fn = true
@@ -327,7 +362,7 @@ do
 					mu.c = c
 					if c % mu.every ~= 0 then return end
 				end
-				enqueue({ k = 1, d = "S2C", s = r, m = "OnClientEvent", a = pack(...), t = clock() })
+				enqueue({ k = 1, d = "S2C", s = r, m = "OnClientEvent", a = pack(...), t = clock(), cid = F.nextCap() })
 			end)
 		end)
 		if not okc or not conn then return end
@@ -382,7 +417,7 @@ do
 				task.wait(0.5)
 				pcall(function()
 					local l = getnilinstances()
-					for i = 1, math.min(#l, 300) do
+					for i = 1, math.min(#l, 400) do
 						if not alive or N.att >= K.ATT_CAP then return end
 						consider(l[i])
 						if i % 50 == 0 then task.wait() end
@@ -390,6 +425,10 @@ do
 				end)
 			end
 		end)
+		local st = F.reg("s2c")
+		st.installed = true
+		st.kind = "event"
+		st.target = "OnClientEvent"
 		return true
 	end
 
@@ -402,6 +441,10 @@ do
 		INST.cb = true
 		MOD.cb = true
 		for i = 1, #RF.list do pcall(wrapCb, RF.list[i]) end
+		local st = F.reg("cb")
+		st.installed = true
+		st.kind = "callback"
+		st.target = "OnClientInvoke"
 		return true
 	end
 
@@ -447,10 +490,22 @@ do
 			end
 			return old(self, k, v)
 		end))
-		if not ok or type(o) ~= "function" then return false end
+		if not ok or type(o) ~= "function" then
+			local st = F.reg("ni")
+			st.attempts = (st.attempts or 0) + 1
+			st.lastErr = "hookmetamethod failed"
+			st.nextTry = clock() + 2 * st.attempts
+			return false
+		end
 		old = o
 		INST.ni = true
 		MOD.ni = true
+		local st = F.reg("ni")
+		st.installed = true
+		st.attempts = 0
+		st.lastErr = nil
+		st.kind = "newindex"
+		st.target = "__newindex"
 		return true
 	end
 
@@ -466,7 +521,7 @@ do
 					if MOD.sys and alive and not busy then pcall(F.capSrc, tag, a) end
 					return holder.old(a, ...)
 				end
-			end, true)
+			end, true, "sys_" .. tag)
 			if ok then any = true end
 		end
 		wrap(genv.queue_on_teleport, "queue_on_teleport")
@@ -489,7 +544,7 @@ do
 					end
 					return holder.old(self, ...)
 				end
-			end, false)
+			end, false, "sys_" .. method)
 			if ok then any = true end
 		end
 		direct(LP, "Kick")
@@ -515,7 +570,40 @@ do
 		end)
 		INST.sys = true
 		MOD.sys = true
+		local st = F.reg("sys")
+		st.installed = any
+		st.kind = "function"
+		st.target = "queue_on_teleport/setclipboard/Kick/Teleport"
 		return any
+	end
+
+	local netTargets = {}
+
+	local function hookReq(fn, tag)
+		local ok = F.hookWith(fn, function(holder)
+			return function(opts, ...)
+				if MOD.net and alive and not busy then
+					local url, meth, sent, hdr
+					if type(opts) == "table" then
+						url = opts.Url or opts.url or opts.URL
+						meth = opts.Method or opts.method
+						sent = opts.Body or opts.body
+						hdr = opts.Headers or opts.headers
+					elseif type(opts) == "string" then
+						url = opts
+					end
+					local r = pack(holder.old(opts, ...))
+					pcall(capNet, tag, url, meth, r[1], sent, hdr)
+					return unpack(r, 1, r.n)
+				end
+				return holder.old(opts, ...)
+			end
+		end, false, "net_" .. tag)
+		if ok then
+			any = true
+			netTargets[tag] = fn
+		end
+		return ok
 	end
 
 	IN.net = function()
@@ -524,28 +612,6 @@ do
 			return true
 		end
 		local any = false
-		local function hookReq(fn, tag)
-			local ok = F.hookWith(fn, function(holder)
-				return function(opts, ...)
-					if MOD.net and alive and not busy then
-						local url, meth, sent, hdr
-						if type(opts) == "table" then
-							url = opts.Url or opts.url or opts.URL
-							meth = opts.Method or opts.method
-							sent = opts.Body or opts.body
-							hdr = opts.Headers or opts.headers
-						elseif type(opts) == "string" then
-							url = opts
-						end
-						local r = pack(holder.old(opts, ...))
-						pcall(capNet, tag, url, meth, r[1], sent, hdr)
-						return unpack(r, 1, r.n)
-					end
-					return holder.old(opts, ...)
-				end
-			end, false)
-			if ok then any = true end
-		end
 		hookReq(genv.request, "request")
 		hookReq(genv.http_request, "http_request")
 		hookReq(genv.httprequest, "httprequest")
@@ -554,6 +620,10 @@ do
 		if type(genv.fluxus) == "table" then hookReq(genv.fluxus.request, "fluxus.request") end
 		INST.net = true
 		MOD.net = true
+		local st = F.reg("net")
+		st.installed = any
+		st.kind = "function"
+		st.target = "request/http_request"
 		return any
 	end
 
@@ -563,24 +633,30 @@ do
 			return true
 		end
 		local any = false
-		for _, name in ipairs({ "HttpGet", "HttpGetAsync" }) do
+		for _, name in ipairs({ "HttpGet", "HttpGetAsync", "HttpPost", "HttpPostAsync" }) do
 			local okf, fn = pcall(function() return game[name] end)
 			if okf then
 				local ok = F.hookWith(fn, function(holder)
 					return function(self, url, ...)
 						if MOD.http and alive and not busy and not (X.httpUrl ~= nil and X.httpUrl == url) then
+							local a2 = select(2, ...)
+							local sent = type(a2) == "string" and a2 or nil
 							local r = pack(holder.old(self, url, ...))
-							pcall(capNet, name, url, nil, r[1])
+							pcall(capNet, name, url, HTTPF[name] and "POST" or "GET", r[1], sent)
 							return unpack(r, 1, r.n)
 						end
 						return holder.old(self, url, ...)
 					end
-				end, false)
+				end, false, "http_" .. name)
 				if ok then any = true end
 			end
 		end
 		INST.http = true
 		MOD.http = true
+		local st = F.reg("http")
+		st.installed = any
+		st.kind = "function"
+		st.target = "HttpGet/HttpPost"
 		return any
 	end
 
@@ -608,9 +684,13 @@ do
 				end
 				return ws
 			end
-		end, false)
+		end, false, "ws")
 		INST.ws = true
 		MOD.ws = ok
+		local st = F.reg("ws")
+		st.installed = ok
+		st.kind = "function"
+		st.target = "WebSocket.connect"
 		return ok
 	end
 
@@ -626,9 +706,13 @@ do
 				end
 				return holder.old(m, ...)
 			end
-		end, false)
+		end, false, "req")
 		INST.req = true
 		MOD.req = ok
+		local st = F.reg("req")
+		st.installed = ok
+		st.kind = "function"
+		st.target = "require"
 		return ok
 	end
 
@@ -640,6 +724,8 @@ do
 		end
 		newRec("SYS", nm, e.m, (packStr(e.a, 3)), now)
 	end
+
+	local lastResolve = 0
 
 	F.onTick(function(now)
 		if MOD.cb and now - X.lastRf >= 8 then
@@ -671,6 +757,15 @@ do
 				end
 			end
 		end)
+		if now - lastResolve >= 30 then
+			lastResolve = now
+			local cur = genv.request
+			if type(cur) == "function" and cur ~= netTargets.request and MOD.net then
+				seenFn[cur] = nil
+				netTargets.request = nil
+				hookReq(cur, "request")
+			end
+		end
 	end)
 
 	F.stage("nc", 20, function()

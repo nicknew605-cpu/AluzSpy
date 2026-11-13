@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load hybrid") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load hybrid") end end
 local okHY, errHY = xpcall(function()
 	if not (F.job and F.fingerprint) then return end
 
@@ -64,6 +64,13 @@ local okHY, errHY = xpcall(function()
 			or head:find("not supported", 1, true) ~= nil or head:find("decompiler error", 1, true) ~= nil
 	end
 
+	local function getBytecode(s)
+		if type(getscriptbytecode) ~= "function" then return nil end
+		local ok, bc = pcall(getscriptbytecode, s)
+		if ok and type(bc) == "string" and #bc >= 16 then return bc end
+		return nil
+	end
+
 	D.queueScript = function(sc, prio)
 		if not S.dump or not D.admit(sc, prio) then return end
 		if not CAP.decompile and not CAP.getscriptbytecode then return end
@@ -78,10 +85,9 @@ local okHY, errHY = xpcall(function()
 				full = okf and full or nil
 				local name = (okn and tostring(nm) or "x"):gsub("[^%w]", "")
 				local res = CAP.decompile and tryDecompile(s, 25) or nil
-				local okb, bc = false, nil
-				if CAP.getscriptbytecode then okb, bc = pcall(getscriptbytecode, s) end
+				local bc = getBytecode(s)
 				local srcText = (res and res.ok and type(res.r) == "string" and #res.r >= 40 and not badText(res.r)) and res.r or nil
-				local bcOk = okb and type(bc) == "string" and #bc >= 16 and #bc <= 2097152
+				local bcOk = type(bc) == "string" and #bc <= 4194304
 				if not srcText then
 					local reason
 					if not CAP.decompile then
@@ -95,16 +101,25 @@ local okHY, errHY = xpcall(function()
 					elseif badText(res.r) then
 						reason = "bad_output"
 					end
-					if reason then D.fails[full or name] = { reason = reason, bytecode = bcOk or nil } end
+					D.fails[full or name] = { reason = reason, bytecode = bcOk or nil }
 				end
 				local entS, entB
 				if srcText then entS = D.add(srcText, "script_" .. name, full, nil) end
-				if bcOk and (pairMode[s] or not srcText) then entB = D.add(bc, "bytecode_" .. name, full, nil) end
+				if bcOk and (pairMode[sc] or not srcText or CFG.vmdump) then
+					entB = D.add(bc, "bytecode_" .. name, full, nil)
+				end
 				if entS and entB then
 					entS.pair = entB.id
 					entB.pair = entS.id
 				end
 				if entS then D.sdf[s] = entS.f end
+				if entB and CFG.vmdump and F.vmDump then
+					local p1, p2, rep = F.vmDump(entB, bc)
+					if rep and entB then
+						entB.vm = rep
+						entB.vmStrings = rep.strings
+					end
+				end
 				task.wait(1.2)
 			end
 			D.running = false
@@ -140,7 +155,7 @@ local okHY, errHY = xpcall(function()
 		local n, items = 0, {}
 		for k, v in pairs(D.fails) do
 			n = n + 1
-			if n <= 100 then items[k] = v end
+			if n <= 200 then items[k] = v end
 		end
 		return { count = n, items = items }
 	end

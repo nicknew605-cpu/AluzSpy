@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load deobfuscate") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load deobfuscate") end end
 local okDE, errDE = xpcall(function()
 	F.api = F.api or {}
 	if CFG.deob == nil then CFG.deob = true end
@@ -247,8 +247,8 @@ local okDE, errDE = xpcall(function()
 			if type(res) == "table" and res.text then
 				DE.stats.auto = DE.stats.auto + 1
 				local base = (res.f or "dump"):gsub("%.lua$", "")
-				pcall(FS.write, PATH.d(base .. ".deob.lua"), res.text)
-				pcall(FS.write, PATH.d(base .. ".deob.json"), F.enc(res.rep) or "{}")
+				D.emit(base .. ".deob.lua", res.text, "deob")
+				D.emit(base .. ".deob.json", F.enc(res.rep) or "{}", "deob")
 			end
 			if #DE.pending > 0 then task.delay(1.2, DE.pump) end
 		end)
@@ -274,11 +274,11 @@ local okDE, errDE = xpcall(function()
 			return nil, tostring(text)
 		end
 		local base = nm == "inline" and ("inline_" .. os.time()) or (nm:match("([^/]+)$") or "inline"):gsub("%.lua$", "")
-		pcall(FS.write, PATH.d(base .. ".deob.lua"), text)
-		pcall(FS.write, PATH.d(base .. ".deob.json"), F.enc(rep) or "{}")
+		D.emit(base .. ".deob.lua", text, "deob")
+		D.emit(base .. ".deob.json", F.enc(rep) or "{}", "deob")
 		for i, l in ipairs(rep.layers) do
 			if l.src and #l.src >= 16 then
-				pcall(FS.write, PATH.d(base .. ".layer" .. i .. ".lua"), l.src)
+				D.emit(base .. ".layer" .. i .. ".lua", l.src, "layer")
 			end
 		end
 		return text, base, rep
@@ -305,8 +305,8 @@ local okDE, errDE = xpcall(function()
 				local ok, text, rep = pcall(DE.run, j.src)
 				if ok then
 					local base = (j.ent.f or "dump"):gsub("%.lua$", "")
-					pcall(FS.write, PATH.d(base .. ".deob.lua"), text)
-					pcall(FS.write, PATH.d(base .. ".deob.json"), F.enc(rep) or "{}")
+					D.emit(base .. ".deob.lua", text, "deob")
+					D.emit(base .. ".deob.json", F.enc(rep) or "{}", "deob")
 					out[#out + 1] = base
 				end
 				if F.Y then F.Y() end
@@ -347,6 +347,8 @@ local okDE, errDE = xpcall(function()
 	end
 
 	F.api.deobfReport = F.deobfReport
+	F.api.deobf = F.api.deobfuscate
+	F.api.deobfAll = F.api.deobAll
 
 	F.extra.deobfuscate = function()
 		return { stats = DE.stats, pending = #DE.pending, auto = CFG.autoDeobf }

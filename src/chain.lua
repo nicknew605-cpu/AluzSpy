@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load chain") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load chain") end end
 local okCH, errCH = xpcall(function()
 	local CH = { nodes = {}, fetches = {}, alerts = 0 }
 	F.CH = CH
@@ -29,6 +29,14 @@ local okCH, errCH = xpcall(function()
 		return table.concat(out)
 	end
 
+	local LEARN = {}
+	local LEARNP = PATH.f(".learn.json")
+	do
+		local txt = FS.read(LEARNP)
+		local t = type(txt) == "string" and F.dec(txt) or nil
+		if type(t) == "table" then LEARN = t end
+	end
+
 	local function count(s, pat)
 		local n = 0
 		for _ in s:gmatch(pat) do
@@ -38,9 +46,9 @@ local okCH, errCH = xpcall(function()
 		return n
 	end
 
-	local lastSrc, lastFp
+	local lastSrc, lastFp, lastUrl
 	function F.fingerprint(src, url)
-		if src == lastSrc and lastFp then return lastFp end
+		if src == lastSrc and lastFp and url == lastUrl then return lastFp end
 		local n = #src
 		local head = src:sub(1, 8000)
 		local mid = n > 8000 and src:sub(1, math.min(n, 120000)) or head
@@ -97,16 +105,53 @@ local okCH, errCH = xpcall(function()
 			fp.name = best
 			fp.conf = math.min(100, bc)
 			fp.why = bw
+			local lk = LEARN[best .. "|" .. tostring(tag or "")]
+			if type(lk) == "table" and (lk.c or 0) >= 3 then
+				fp.conf = math.min(100, fp.conf + 10)
+				fp.why[#fp.why + 1] = "learned from " .. tostring(lk.c) .. " prior observations"
+			end
 		elseif m.vm and (m.enc or m.anti) then
 			fp.name = "VM-unknown"
 			fp.conf = 35
 			fp.why = { "heavy VM-like structure" }
 		end
-		lastSrc, lastFp = src, fp
+		lastSrc, lastFp, lastUrl = src, fp, url
 		return fp
 	end
 
+	function F.learn()
+		local dirty = false
+		for _, n in pairs(D.list or {}) do
+			if n.fp and n.fp.name and n.fp.conf >= 60 then
+				local key = n.fp.name .. "|" .. tostring(n.tag or "")
+				local e = LEARN[key]
+				if type(e) ~= "table" then e = { c = 0, t = os.time() }; LEARN[key] = e; dirty = true end
+				e.c = (e.c or 0) + 1
+				e.t = os.time()
+			end
+		end
+		if dirty then FS.write(LEARNP, F.enc(LEARN) or "{}") end
+		return true
+	end
+
+	function F.gcStale()
+		local n = 0
+		for k in pairs(X.netRecs) do
+			if X.netRecs[k] and X.netRecs[k].live == false then X.netRecs[k] = nil; n = n + 1 end
+		end
+		for k in pairs(X.srcRecs) do
+			if X.srcRecs[k] and X.srcRecs[k].live == false then X.srcRecs[k] = nil; n = n + 1 end
+		end
+		for k in pairs(X.spam) do
+			if X.spam[k] and (X.spam[k].c or 0) == 0 then X.spam[k] = nil end
+		end
+		return n
+	end
+
+	local pendingFp = nil
+
 	D.obf = function(src)
+		if pendingFp and pendingFp.src == src then return pendingFp.fp.name end
 		return F.fingerprint(src, nil).name
 	end
 
@@ -143,10 +188,17 @@ local okCH, errCH = xpcall(function()
 
 	local baseAdd = D.add
 	D.add = function(src, tag, url, parent, id)
+		local fp = nil
+		if type(src) == "string" then
+			local okf, r = pcall(F.fingerprint, src, url)
+			if okf then fp = r end
+			pendingFp = { src = src, fp = fp }
+		end
 		local ent = baseAdd(src, tag, url, parent, id)
+		pendingFp = nil
 		if ent and type(src) == "string" and not ent.dup then
 			local ok, err = pcall(function()
-				local fp = F.fingerprint(src, url)
+				fp = fp or F.fingerprint(src, url)
 				local bin = F.isBin(src)
 				if fp.name then ent.fp = { name = fp.name, conf = fp.conf, why = fp.why } end
 				ent.m = fp.m

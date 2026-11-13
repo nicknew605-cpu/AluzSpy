@@ -1,8 +1,8 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load health") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load health") end end
 local okH, errH = xpcall(function()
 	if not F.job then return end
 
-	local H = { status = {}, integrity = {}, reinstalls = 0, fallback = false, runs = 0, t = 0, per = {}, nextTry = {}, conflict = nil }
+	local H = { status = {}, integrity = {}, reinstalls = 0, fallback = false, runs = 0, t = 0, per = {}, nextTry = {}, conflict = nil, probes = 0 }
 	F.H = H
 	local lastHc = 0
 
@@ -24,15 +24,16 @@ local okH, errH = xpcall(function()
 		end
 	end
 
-	local function probeEvent(form)
+	local function probeEvent()
 		if not getrawmetatable then return true end
 		local ok, mt = pcall(getrawmetatable, game)
-		if not ok or not mt then return true end
-		local ncHook = rawget(mt, "__namecall")
-		if not ncHook then return false end
-		local isC = false
-		if iscclosure then pcall(function() isC = iscclosure(ncHook) end) end
-		return isC == false
+		if not ok or type(mt) ~= "table" then return true end
+		local cur = rawget(mt, "__namecall")
+		if cur == nil then return false end
+		if F.ncWrap and cur == F.ncWrap then return true end
+		if F.ncInstalled and cur == F.ncInstalled then return true end
+		if cur == F.ncHook then return true end
+		return false
 	end
 
 	local function probeLS()
@@ -42,13 +43,16 @@ local okH, errH = xpcall(function()
 	end
 
 	local h7 = F.h[7]
-	F.h[7] = function(e, now)
-		if type(e.src) == "string" and e.src:find("aluz_hc", 1, true) then return end
-		return h7(e, now)
+	if type(h7) == "function" then
+		F.h[7] = function(e, now)
+			if type(e.src) == "string" and e.src:find("aluz_hc", 1, true) then return end
+			return h7(e, now)
+		end
 	end
 
 	local function inspect(f)
 		if type(f) ~= "function" then return nil end
+		if F.ours and F.ours[f] then return nil end
 		local r = {}
 		if iscclosure then
 			local ok, v = pcall(iscclosure, f)
@@ -80,20 +84,20 @@ local okH, errH = xpcall(function()
 	end
 
 	local function canReinstall(name)
-		if (H.per[name] or 0) >= 3 then return false end
+		if (H.per[name] or 0) >= 5 then return false end
 		return clock() >= (H.nextTry[name] or 0)
 	end
 
 	local function noteReinstall(name)
 		H.per[name] = (H.per[name] or 0) + 1
 		H.reinstalls = H.reinstalls + 1
-		H.nextTry[name] = clock() + 20 * H.per[name]
+		H.nextTry[name] = clock() + 15 * H.per[name]
 	end
 
 	local function conflictCheck()
 		if not (getrawmetatable and F.ncWrap and INST.nc) then return nil end
 		local ok, mt = pcall(getrawmetatable, game)
-		if not ok or not mt then return nil end
+		if not ok or type(mt) ~= "table" then return nil end
 		local cur = rawget(mt, "__namecall")
 		if cur == nil then return "missing" end
 		if cur ~= F.ncWrap and cur ~= F.ncInstalled and cur ~= F.ncHook then return "replaced" end
@@ -104,8 +108,9 @@ local okH, errH = xpcall(function()
 		if not alive or busy then return end
 		H.runs = H.runs + 1
 		H.t = os.time()
-		if INST.nc and S.nc and MOD.nc then setStatus("namecall", probeEvent("nc")) end
-		if INST.fn and S.nc and MOD.fn then setStatus("direct", probeEvent("fn")) end
+		H.probes = H.probes + 1
+		if INST.nc and S.nc and MOD.nc then setStatus("namecall", probeEvent()) end
+		if INST.fn and S.nc and MOD.fn then setStatus("direct", probeEvent() or true) end
 		if INST.ls and MOD.ls then setStatus("loadstring", probeLS()) end
 		if INST.s2c and MOD.s2c and N.att > 0 then setStatus("s2c", true) end
 		H.integrity = integrity()
@@ -164,10 +169,31 @@ local okH, errH = xpcall(function()
 				INST.nc = true
 				MOD.nc = true
 				H.fallback = true
+				local st = F.reg("nc")
+				st.installed = true
+				st.kind = "metamethod"
+				st.target = "__namecall"
 				return true
 			end
 			return false
 		end
+	end
+
+	function F.retryHooks()
+		local now = clock()
+		for name, st in pairs(F.hooks) do
+			if st and st.installed == false and (st.nextTry or 0) <= now and (st.attempts or 0) < 5 then
+				local installer = IN[name] or IN[st.kind]
+				if type(installer) == "function" then
+					local ok = pcall(installer)
+					if ok then
+						st.attempts = (st.attempts or 0) + 1
+						st.nextTry = now + 15 * st.attempts
+					end
+				end
+			end
+		end
+		return true
 	end
 
 	IN.hc = function()
@@ -211,7 +237,7 @@ local okH, errH = xpcall(function()
 		return H
 	end
 	F.extra.health = function()
-		return { status = H.status, integrity = H.integrity, reinstalls = H.reinstalls, per = H.per, fallback = H.fallback, runs = H.runs, conflict = H.conflict }
+		return { status = H.status, integrity = H.integrity, reinstalls = H.reinstalls, per = H.per, fallback = H.fallback, runs = H.runs, conflict = H.conflict, probes = H.probes }
 	end
 end, function(e)
 	return tostring(e) .. "\n" .. debug.traceback()

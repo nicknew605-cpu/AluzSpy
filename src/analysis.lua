@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load analysis") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load analysis") end end
 local okAN, errAN = xpcall(function()
 	if not F.job then return end
 

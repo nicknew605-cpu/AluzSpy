@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load dump") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load dump") end end
 do
 	local OBF = {
 		{ "Luraph", "Luraph" }, { "LPH[%$%~%@%|]", "Luraph" }, { "LPH_", "Luraph" },
@@ -47,6 +47,18 @@ do
 		return false
 	end
 
+	function D.kindOf(tag, url, src)
+		tag = tostring(tag or "other")
+		if tag:sub(1, 8) == "bytecode" then return "bytecode" end
+		if tag:sub(1, 9) == "layer" or tag:sub(1, 5) == "layer" then return "layer" end
+		if tag:find("deob", 1, true) then return "deob" end
+		if tag:sub(1, 7) == "script_" then return "script" end
+		if tag == "loadstring" or tag == "loadfile" or tag == "dofile" then return "script" end
+		if url and url:lower():find("%.lua") then return "script" end
+		if type(src) == "string" and D.looks(src, url) then return "script" end
+		return "other"
+	end
+
 	local function step(job, maxBytes)
 		local s = job.s
 		local n = #s
@@ -71,14 +83,16 @@ do
 		if ex then
 			ent.dup = ex.id
 			ent.f = ex.f
+			ent.bytes = 0
 			D.pending = D.pending - n
 			job.s = nil
+			N.dup = N.dup + 1
 			return
 		end
 		D.seen[key] = ent
 		ent.hash = key
 		D.t = D.t + 1
-		D.q[D.t] = { f = ent.f, s = job.s }
+		D.q[D.t] = { f = ent.f, s = job.s, k = ent.kind, id = ent.id }
 		job.s = nil
 	end
 
@@ -97,9 +111,10 @@ do
 		D.n = D.n + 1
 		local dom = domain(url)
 		local tg = tag:gsub("[^%w]", "")
+		local kind = D.kindOf(tag, url, src)
 		local fname = string.format("%s_%03d_%s%s.lua", PATH.tag, D.n, tg, dom and ("_" .. dom) or "")
 		local ent = {
-			id = id, f = fname, tag = tag, url = url, bytes = n, parent = parent,
+			id = id, f = fname, tag = tag, url = url, bytes = n, parent = parent, kind = kind,
 			obf = D.obf(src), t = r2(clock() - T0),
 		}
 		D.list[#D.list + 1] = ent
@@ -114,13 +129,71 @@ do
 		return ent
 	end
 
-	function D.flush()
-		while D.jobs[1] do
-			local j = table.remove(D.jobs, 1)
-			step(j, #j.s)
-			finish(j)
+	function D.quota(kind)
+		return K.DISK_KIND[kind] or K.DISK_KIND.other or 8388608
+	end
+
+	function D.used(kind)
+		return D.kind[kind] or 0
+	end
+
+	function D.evict(kind, need)
+		local freed, removed = 0, 0
+		local function evictFrom(k, amount)
+			local over = D.used(k) + amount - D.quota(k)
+			if over <= 0 then return end
+			for i = 1, #D.files do
+				local f = D.files[i]
+				if f and f.k == k and not f.gone then
+					f.gone = true
+					D.kind[k] = (D.kind[k] or 0) - f.n
+					D.bytes = (D.bytes or 0) - f.n
+					FS.del(PATH.d(f.f))
+					freed = freed + f.n
+					removed = removed + 1
+					N.evict = N.evict + 1
+					over = over - f.n
+					if over <= 0 then return end
+				end
+			end
 		end
-		while D.writeOne() do end
+		evictFrom(kind, need)
+		if D.used(kind) + need > D.quota(kind) then
+			evictFrom("other", need)
+		end
+		if D.used(kind) + need > D.quota(kind) then
+			evictFrom("layer", need)
+		end
+		return freed
+	end
+
+	function D.evictTotal(need)
+		local over = (D.bytes or 0) + need - K.DUMP_TOTAL
+		if over <= 0 then return 0 end
+		local freed = 0
+		for i = 1, #D.files do
+			local f = D.files[i]
+			if f and not f.gone then
+				f.gone = true
+				D.kind[f.k] = (D.kind[f.k] or 0) - f.n
+				D.bytes = (D.bytes or 0) - f.n
+				FS.del(PATH.d(f.f))
+				freed = freed + f.n
+				N.evict = N.evict + 1
+				over = over - f.n
+				if over <= 0 then break end
+			end
+		end
+		return freed
+	end
+
+	function D.emit(name, content, kind)
+		if not HAS_W or type(content) ~= "string" then return false end
+		D.pending = D.pending + #content
+		D.t = D.t + 1
+		D.q[D.t] = { f = name, s = content, k = kind or "other" }
+		X.dirty = true
+		return true
 	end
 
 	function D.writeOne()
@@ -128,19 +201,55 @@ do
 		local it = D.q[D.h]
 		D.q[D.h] = nil
 		D.h = D.h + 1
+		if not it then return true end
 		local n = #it.s
 		if n >= D.pending then D.pending = 0 else D.pending = D.pending - n end
-		if pcall(writefile, PATH.d(it.f), it.s) then
-			D.files[#D.files + 1] = { f = it.f, n = n }
-			D.bytes = D.bytes + n
-			while D.bytes > K.DUMP_TOTAL and #D.files > 1 do
+		local kind = it.k or "other"
+		if D.used(kind) + n > D.quota(kind) then D.evict(kind, n) end
+		if (D.bytes or 0) + n > K.DUMP_TOTAL then D.evictTotal(n) end
+		local ok = pcall(writefile, PATH.d(it.f), it.s)
+		if ok then
+			D.files[#D.files + 1] = { f = it.f, n = n, k = kind, id = it.id, t = os.time() }
+			D.bytes = (D.bytes or 0) + n
+			D.kind[kind] = (D.kind[kind] or 0) + n
+			if #D.files > 4000 then
 				local old = table.remove(D.files, 1)
-				D.bytes = D.bytes - old.n
-				FS.del(PATH.d(old.f))
+				if old and not old.gone then
+					D.kind[old.k] = (D.kind[old.k] or 0) - old.n
+					D.bytes = (D.bytes or 0) - old.n
+					FS.del(PATH.d(old.f))
+					N.evict = N.evict + 1
+				end
 			end
 		else
 			D.fail = D.fail + 1
 		end
+		D.dirtyDump = true
+		X.dirty = true
+		return true
+	end
+
+	function D.flush()
+		return D.flushBudgeted(4000)
+	end
+
+	function D.flushBudgeted(maxJobs)
+		maxJobs = tonumber(maxJobs) or 200
+		local guard = 0
+		while D.jobs[1] and guard < maxJobs do
+			guard = guard + 1
+			local j = table.remove(D.jobs, 1)
+			local stepBytes = 131072
+			while not step(j, math.min(stepBytes, #j.s - j.pos + 1)) do
+				guard = guard + 1
+				if guard >= maxJobs then return false end
+				stepBytes = stepBytes * 2
+				if stepBytes > 4194304 then stepBytes = 4194304 end
+			end
+			finish(j)
+		end
+		guard = 0
+		while D.writeOne() and guard < maxJobs do guard = guard + 1 end
 		return true
 	end
 
@@ -185,7 +294,7 @@ do
 				and (not filter or full:lower():find(filter, 1, true)) then
 				D.queueScript(s, 3)
 				c = c + 1
-				if c >= 400 then break end
+				if c >= 500 then break end
 			end
 		end
 		return c
@@ -200,6 +309,10 @@ do
 		if CAP.getloadedmodules then
 			local ok2, l2 = pcall(getloadedmodules)
 			if ok2 then c = c + scanList(l2, filter) end
+		end
+		if CAP.getrunningscripts then
+			local ok3, l3 = pcall(getrunningscripts)
+			if ok3 then c = c + scanList(l3, filter) end
 		end
 		return c
 	end
@@ -324,7 +437,7 @@ do
 				end
 				return holder.old(src, ...)
 			end
-		end, true)
+		end, true, "ls")
 		if not ok then return false end
 		INST.ls = true
 		MOD.ls = true
@@ -372,7 +485,7 @@ do
 					end
 					return holder.old(path, data, ...)
 				end
-			end, true)
+			end, true, "rw_" .. tag)
 			if ok then any = true end
 		end
 		hk(genv.readfile, "readfile", true)
@@ -380,6 +493,10 @@ do
 		hk(genv.appendfile, "appendfile", false)
 		INST.rw = true
 		MOD.rw = true
+		local st = F.reg("rw")
+		st.installed = any
+		st.kind = "function"
+		st.target = "readfile/writefile"
 		return any
 	end
 

@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load decode") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load decode") end end
 local okDC, errDC = xpcall(function()
 	if CFG.decode == nil then CFG.decode = true end
 	if CFG.sandbox == nil then CFG.sandbox = false end
@@ -1047,9 +1047,7 @@ local okDC, errDC = xpcall(function()
 	end
 
 	local function emitFile(name, text)
-		D.pending = D.pending + #text
-		D.t = D.t + 1
-		D.q[D.t] = { f = name, s = text }
+		D.emit(name, text, "layer")
 	end
 
 	local function addLayers(ent, list, tag)
@@ -1164,7 +1162,12 @@ local okDC, errDC = xpcall(function()
 		return ent
 	end
 
-	conns[#conns + 1] = SV.RunService.Heartbeat:Connect(step)
+	conns[#conns + 1] = SV.RunService.Heartbeat:Connect(function()
+		if not alive then return end
+		if X.fps < 22 then return end
+		if X.memNow > K.MEM_ABS * 0.85 then return end
+		step()
+	end)
 
 	local function resolveSrc(x)
 		if type(x) ~= "string" then return nil end
@@ -1193,7 +1196,7 @@ local okDC, errDC = xpcall(function()
 			local ok, text, rep, stats = pcall(F.decodeCore, src)
 			if not ok then return nil, tostring(text) end
 			local name = outName(nm, ".dec.lua")
-			FS.write(PATH.d(name), text)
+			D.emit(name, text, "layer")
 			return text, name, rep, stats
 		end,
 		analyze = function(x, net)
@@ -1206,11 +1209,11 @@ local okDC, errDC = xpcall(function()
 			if not ok then return nil, tostring(rtext) end
 			if not rtext then return nil, layers end
 			local name = outName(nm, ".sandbox.txt")
-			FS.write(PATH.d(name), rtext)
+			D.emit(name, rtext, "layer")
 			return rtext, name, layers
 		end,
 		decodeAll = function()
-			pcall(D.flush)
+			if D.flushBudgeted then pcall(D.flushBudgeted, 40) end
 			local c = 0
 			for _, ent in ipairs(D.list) do
 				if not ent.dup and ent.f and #DEC.jobs < 24 then

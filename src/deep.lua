@@ -1,11 +1,11 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load deep") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load deep") end end
 local okDP, errDP = xpcall(function()
 	if CFG.ver == nil then CFG.ver = "" end
 	if CFG.split == nil then CFG.split = false end
 	F.cfgLoad()
 	F.defMods.req = true
-	if CFG.ver ~= "1.2.3-beta" then
-		CFG.ver = "1.2.3-beta"
+	if CFG.ver ~= "1.2.3-stable" then
+		CFG.ver = "1.2.3-stable"
 		F.cfgSave()
 	end
 
@@ -148,7 +148,7 @@ local okDP, errDP = xpcall(function()
 		return true
 	end
 	for _, s in ipairs(F.stages) do
-		if s[1] == "ls" then s[2] = IN.ls end
+		if s[1] == "ls" then s[4] = IN.ls end
 	end
 
 	local h4 = F.h[4]

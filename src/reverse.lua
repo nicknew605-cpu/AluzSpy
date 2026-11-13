@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load reverse") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load reverse") end end
 local okRV, errRV = xpcall(function()
 	if not F.job then return end
 	F.api = F.api or {}
@@ -194,6 +194,30 @@ local okRV, errRV = xpcall(function()
 			return RV.last and RV.last.edges or {}
 		end
 		return RV.last
+	end
+
+	F.api.reverseFind = function(text, limit)
+		text = tostring(text or "")
+		if text == "" then return {} end
+		limit = tonumber(limit) or 40
+		local out = {}
+		if RV.last and RV.last.xref then
+			for _, x in ipairs(RV.last.xref) do
+				local hay = tostring(x.s or ""):lower()
+				if hay:find(text:lower(), 1, true) then
+					local srcs = {}
+					for k in pairs(x.src or {}) do srcs[#srcs + 1] = k end
+					table.sort(srcs)
+					out[#out + 1] = { s = x.s, scripts = srcs }
+					if #out >= limit then break end
+				end
+			end
+		end
+		for i = 1, math.min(#out, 20) do
+			warn("[AluzSpy] find " .. tostring(out[i].s) .. " <- " .. table.concat(out[i].scripts, ", "))
+		end
+		if #out == 0 then warn("[AluzSpy] reverseFind: no match (run AluzSpy.reverse() first)") end
+		return out
 	end
 
 	F.reverseSummary = function()

@@ -1,9 +1,15 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load runtime") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load runtime") end end
 local okRT, errRT = xpcall(function()
 	local LOADER = "https://raw.githubusercontent.com/nicknew605-cpu/AluzSpy/refs/heads/main/loader.lua"
 
+	local frame = 0
 	conns[#conns + 1] = SV.RunService.Heartbeat:Connect(function(dt)
 		if not alive then return end
+		frame = frame + 1
+		if frame % 30 == 0 and F.memNow then
+			X.memNow = F.memNow()
+			if X.memNow > K.MEM_ABS then X.lowN = X.lowN + 1 else X.lowN = 0 end
+		end
 		if dt > 3.5 then X.stall = true end
 		if dt > 0 then X.fps = X.fps * 0.92 + (1 / dt) * 0.08 end
 		if dt > 0.05 then
@@ -21,7 +27,7 @@ local okRT, errRT = xpcall(function()
 		local budget = F.budget()
 		local ok, err = pcall(F.process, budget)
 		if not ok then noteErr(err) end
-		if X.fps >= 22 and (D.jobs[1] or D.h <= D.t) then
+		if X.fps >= 18 and (D.jobs[1] or D.h <= D.t) then
 			local okd, errd = pcall(D.pump)
 			if not okd then noteErr(errd) end
 		end
@@ -69,12 +75,19 @@ local okRT, errRT = xpcall(function()
 		version = VERSION,
 		nc = F.setNC,
 		mod = F.setMod,
-		save = function() return saveNow("manual") end,
+		save = function()
+			local ok, res = saveNow("manual")
+			warn("[AluzSpy] save: " .. tostring(ok) .. " " .. tostring(res))
+			local last = F.lastSave or {}
+			warn("[AluzSpy] hooks: " .. tostring(last.hooks) .. " | dump: " .. tostring(last.dump))
+			return ok, res
+		end,
 		report = F.report,
 		dump = function(b)
 			S.dump = b ~= false
 			CFG.dump = S.dump
 			F.cfgSave()
+			return S.dump
 		end,
 		dumpScripts = F.scanScripts,
 		block = function(n) X.block[n] = true rules() end,
@@ -89,10 +102,30 @@ local okRT, errRT = xpcall(function()
 		shutdown = shutdown,
 		stats = F.stats,
 		errors = function() return errMap end,
+		restore = function()
+			local n = F.restore and F.restore() or 0
+			warn("[AluzSpy] restored " .. tostring(n) .. " hook(s)")
+			return n
+		end,
+		status = function()
+			local m = F.modules() or {}
+			return {
+				version = VERSION,
+				profile = CFG.profile,
+				stats = F.stats(),
+				stages = m.stages,
+				hooks = m.hooks,
+				health = F.extra and F.extra.health and F.extra.health() or nil,
+				vm = F.extra and F.extra.vm and F.extra.vm() or nil,
+				dump = F.extra and F.extra.dump2 and F.extra.dump2() or nil,
+				tune = X.tune,
+			}
+		end,
 		debug = function()
 			local js = F.enc({
 				stats = F.stats(), errors = errMap, banned = BAN.list, recovered = X.recovered,
 				capabilities = CAP, health = F.extra.health and F.extra.health() or nil,
+				hooks = F.modules().hooks,
 			})
 			warn("[AluzSpy] " .. tostring(js))
 			return js
@@ -142,12 +175,13 @@ local okRT, errRT = xpcall(function()
 			return f ~= nil
 		end,
 		help = function()
-			warn("[AluzSpy] save() report() paths() watch() debugAll() stageReport() find(text,n) top(n) stats() modules()")
-			warn("[AluzSpy] fullDump() dumpIndex() dumpReport() missing() chain() split(bool) debug() errors() health()")
+			warn("[AluzSpy] save() report() paths() watch() debugAll() stageReport() find(text,n) top(n) stats() modules() status()")
+			warn("[AluzSpy] fullDump() dumpIndex() dumpReport() missing() chain() split(bool) debug() errors() health() restore()")
 			warn("[AluzSpy] decode(file) analyze(file,net) decodeAll() deobf(file) deobfAll() deobfReport() set(key,bool)")
 			warn("[AluzSpy] reverse(opts) reverseFind(text) gcmap(deep) whoCalls(name) callgraph() tree() scriptDiff()")
-			warn("[AluzSpy] vip() vip(\"scan\"|\"report\"|\"redact\"|\"safe\"|\"profile\", name) protect(name) threshold(name,mult)")
-			warn("[AluzSpy] actors() dump(bool) dumpScripts(filter) block(name) modify(name,fn) reset() reload() shutdown()")
+			warn("[AluzSpy] vm(status|captured) strings() vip() vip(\"scan\"|\"report\"|\"redact\"|\"safe\"|\"profile\", name)")
+			warn("[AluzSpy] protect(name) threshold(name,mult) actors() dump(bool) dumpScripts(filter) block(name) modify(name,fn)")
+			warn("[AluzSpy] reset() reload() shutdown()")
 		end,
 	}
 	for k, v in pairs(F.api or {}) do
@@ -160,12 +194,12 @@ local okRT, errRT = xpcall(function()
 	warn("[AluzSpy] loaded " .. VERSION .. " (AluzSpy.help() for commands)")
 
 	pcall(F.migrate)
-	if F.applyMax then pcall(F.applyMax) end
+	if CFG.autoMax and F.applyMax then pcall(F.applyMax) end
 	F.trace("runtime boot max")
 	task.spawn(F.boot)
 
 	if CFG.autoScripts then
-		task.delay(25, function()
+		task.delay(20, function()
 			if alive and F.scanScripts then F.scanScripts() end
 		end)
 	end

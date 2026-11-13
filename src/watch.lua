@@ -1,4 +1,4 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load watch") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load watch") end end
 local okWT, errWT = xpcall(function()
 	F.api = F.api or {}
 	F.extra = F.extra or {}
@@ -12,7 +12,7 @@ local okWT, errWT = xpcall(function()
 
 	local function mask(s)
 		if type(s) ~= "string" then return s end
-		s = s:gsub("_|WARNING:%-DO%-NOT%-SHARE[^%s\"';,]*", "[ROBLOSECURITY masked]")
+		s = s:gsub([==[_|WARNING:%-DO%-NOT%-SHARE[^%s"';,]*]==], "[ROBLOSECURITY masked]")
 		s = s:gsub("[%w_%-%.]+", function(w)
 			if #w >= 28 then return w:sub(1, 6) .. ".." .. #w end
 		end)
@@ -38,57 +38,108 @@ local okWT, errWT = xpcall(function()
 		return (s:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0"))
 	end
 
-	local KEYS = {}
-	for _, w in ipairs({ "api[_%-]?key", "token", "secret", "passwd", "password", "authorization", "cookie", "sessionid" }) do
-		KEYS[#KEYS + 1] = ci(w)
+	local KEYSET = {}
+	for _, w in ipairs({
+		"api_key", "apikey", "api-key", "api.key", "apitoken",
+		"token", "secret", "passwd", "password", "authorization",
+		"cookie", "sessionid", "session_id", "session-id",
+		"access_token", "accesstoken", "refresh_token", "refreshtoken", "auth_token",
+	}) do
+		KEYSET[w] = true
 	end
 
-	local RS = { calls = 0, bytes = 0 }
+	local RS = { calls = 0, bytes = 0, chunks = 0 }
+	local GUARD = "\1@ALUZ@"
 
-	local function redact(s)
-		if type(s) ~= "string" or #s == 0 then return s end
-		RS.calls = RS.calls + 1
-		RS.bytes = RS.bytes + #s
-		s = s:gsub("_|WARNING:%-DO%-NOT%-SHARE[^%s\\\"';,]*", "[ROBLOSECURITY masked]")
+	local function protectVersion(s)
+		local saved = {}
+		local i = 0
+		s = s:gsub("%d+%.%d+%.%d+%.%d+", function(t)
+			local a, b, c, d = t:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+			a, b, c, d = tonumber(a), tonumber(b), tonumber(c), tonumber(d)
+			if a and b and c and d and b <= 20 and c <= 20 and d <= 20 then
+				i = i + 1
+				saved[i] = t
+				return GUARD .. i .. "@"
+			end
+			return t
+		end)
+		return s, saved
+	end
+
+	local function restoreVersion(s, saved)
+		if not saved then return s end
+		for i = #saved, 1, -1 do
+			s = s:gsub(GUARD .. i .. "@", function() return saved[i] end)
+		end
+		return s
+	end
+
+	local KEYSEP = [==[([\"']*%s*[:=]%s*[\"']*)]==]
+
+	local function redactChunk(s)
+		s = s:gsub([==[_|WARNING:%-DO%-NOT%-SHARE[^%s"';,]*]==], "[ROBLOSECURITY masked]")
 		s = s:gsub("(discord%w*%.com/api/webhooks/%d+/)([%w_%-]+)", "%1[masked]")
 		s = s:gsub("(api%.telegram%.org/bot)([%w:_%-]+)", "%1[masked]")
-		s = s:gsub("([Bb]earer%s+)([%w%-%._~%+/]+=*)", "%1[masked]")
+		s = s:gsub("([Bb]earer%s+)([%w%-%._~%+/=]+)", "%1[masked]")
 		s = s:gsub("eyJ[%w_%-]+%.[%w_%-]+%.[%w_%-]+", "[jwt masked]")
-		for i = 1, #KEYS do
-			s = s:gsub("(" .. KEYS[i] .. ")([\\\"']*%s*[:=]%s*[\\\"']*)([%w%-%._~%+/=]+)", function(k, sep, v)
-				if #v >= 8 then return k .. sep .. "[masked]" end
-			end)
-		end
+		s = s:gsub("([%w_%-%.]+)" .. KEYSEP .. "([%w%-%._~%+/=]+)", function(k, sep, v)
+			if KEYSET[k:lower()] and #v >= 8 then return k .. sep .. "[masked]" end
+			return k .. sep .. v
+		end)
 		s = s:gsub("[%w%._%%%+%-]+@[%w%-]+%.[%w%.%-]+", "[email]")
 		s = s:gsub("(%d+)%.(%d+)%.(%d+)%.(%d+)", function(a, b, c, d)
 			a, b, c, d = tonumber(a), tonumber(b), tonumber(c), tonumber(d)
 			if a and b and c and d and a > 0 and a <= 255 and b <= 255 and c <= 255 and d <= 255 then return "[ip]" end
 		end)
-		s = s:gsub("([A-Za-z]:[\\/]+[Uu]sers[\\/]+)([^\\/\"'%s]+)", "%1[user]")
-		s = s:gsub("(/[Uu]sers/)([^/\"'%s]+)", "%1[user]")
-		s = s:gsub("(/home/)([^/\"'%s]+)", "%1[user]")
+		s = s:gsub("([A-Za-z]:[\\/]+[Uu]sers[\\/]+)([^\\/'%s]+)", "%1[user]")
+		s = s:gsub("(/[Uu]sers/)([^/'%s]+)", "%1[user]")
+		s = s:gsub("(/home/)([^/'%s]+)", "%1[user]")
 		s = s:gsub("%f[%w]%w+%f[%W]", function(w)
 			if #w >= 56 and w:find("%d") and w:find("%a") then return "[blob " .. #w .. "]" end
 		end)
+		return s
+	end
+
+	local function redact(s)
+		if type(s) ~= "string" or #s == 0 then return s end
+		RS.calls = RS.calls + 1
+		RS.bytes = RS.bytes + #s
+		local prot, saved = protectVersion(s)
+		local out = redactChunk(prot)
 		if CFG.redactIds and LP then
 			local okn, nm = pcall(function() return LP.Name end)
 			local okd, dn = pcall(function() return LP.DisplayName end)
 			local oki, id = pcall(function() return LP.UserId end)
-			if okn and type(nm) == "string" and #nm >= 3 then s = s:gsub(escPat(nm), "[player]") end
-			if okd and type(dn) == "string" and #dn >= 3 then s = s:gsub(escPat(dn), "[player]") end
-			if oki and id and id ~= 0 then s = s:gsub("%f[%d]" .. tostring(id) .. "%f[%D]", "[userid]") end
+			if okn and type(nm) == "string" and #nm >= 3 then out = out:gsub(escPat(nm), "[player]") end
+			if okd and type(dn) == "string" and #dn >= 3 then out = out:gsub(escPat(dn), "[player]") end
+			if oki and id and id ~= 0 then out = out:gsub("%f[%d]" .. tostring(id) .. "%f[%D]", "[userid]") end
 		end
-		return s
+		return restoreVersion(out, saved)
 	end
 	F.redact = redact
-	F.redactStats = function() return { calls = RS.calls, bytes = RS.bytes, on = CFG.redact == true, ids = CFG.redactIds == true } end
+
+	function F.redactChunked(s, chunkSize)
+		if type(s) ~= "string" or #s == 0 then return s end
+		chunkSize = chunkSize or 262144
+		if #s <= chunkSize then return redact(s) end
+		local parts, pos, n = {}, 1, 0
+		while pos <= #s do
+			parts[#parts + 1] = redact(s:sub(pos, pos + chunkSize - 1))
+			n = n + 1
+			pos = pos + chunkSize
+		end
+		RS.chunks = RS.chunks + n
+		return table.concat(parts)
+	end
+	F.redactStats = function() return { calls = RS.calls, bytes = RS.bytes, chunks = RS.chunks, on = CFG.redact == true, ids = CFG.redactIds == true } end
 
 	local SCH, schN = {}, 0
 	local function noteSchema(inst, dir, a)
 		local key = (dir == "S2C" and "S:" or "C:") .. getInfo(inst).full
 		local s = SCH[key]
 		if not s then
-			if schN >= 700 then return end
+			if schN >= 900 then return end
 			schN = schN + 1
 			s = { min = 255, max = 0, pos = {}, n = 0 }
 			SCH[key] = s
@@ -181,7 +232,9 @@ local okWT, errWT = xpcall(function()
 				end
 				if sent ~= "" and #sent < 4000 and url:find("webhooks", 1, true) then
 					local low = sent:lower()
-					if low:find(LP.Name:lower(), 1, true) or low:find(tostring(LP.UserId), 1, true) then
+					local okn, nm = pcall(function() return LP.Name end)
+					local oki, uid = pcall(function() return LP.UserId end)
+					if (okn and nm and low:find(tostring(nm):lower(), 1, true)) or (oki and uid and low:find(tostring(uid), 1, true)) then
 						alert("sends player identity to a webhook", url, now)
 					end
 				end
@@ -229,7 +282,7 @@ local okWT, errWT = xpcall(function()
 		end
 		precs[key] = newRec("PROP", nm, e.p, { val }, now, e.x)
 		pn = pn + 1
-		if pn > 200 then
+		if pn > 300 then
 			precs = {}
 			pn = 0
 		end
@@ -275,7 +328,7 @@ local okWT, errWT = xpcall(function()
 				end
 				return holder.old(self, text, ...)
 			end
-		end, false)
+		end, false, "tc")
 		INST.tc = ok
 		MOD.tc = ok
 		return ok

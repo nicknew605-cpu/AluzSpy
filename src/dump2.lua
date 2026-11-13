@@ -1,13 +1,14 @@
-do local _ = "aluzspy@1.2.3-beta" if F and F.trace then F.trace("load dump2") end end
+do local _ = "aluzspy@1.2.3-stable" if F and F.trace then F.trace("load dump2") end end
 local okD2, errD2 = xpcall(function()
 	F.api = F.api or {}
-	 if CFG.decode == nil then CFG.decode = true end
-if CFG.sandbox == nil then CFG.sandbox = false end
-	local STORE_MAX = 24 * 1024 * 1024
+	if CFG.decode == nil then CFG.decode = true end
+	if CFG.sandbox == nil then CFG.sandbox = false end
+	local STORE_MAX = 6 * 1024 * 1024
 	local byte = string.byte
 	D.store, D.spilled, D.storeBytes = {}, {}, 0
 	D.diffs, D.diffN, D.dirtyDump = {}, 0, false
 	D.extraFiles, D.extraBytes = {}, 0
+	D.recent = {}
 	PATH.spool = PATH.d(".spool")
 
 	local function fastKey(src)
@@ -185,9 +186,9 @@ if CFG.sandbox == nil then CFG.sandbox = false end
 			local a, b = splitLines(oldSrc), splitLines(newSrc)
 			local ca, cb = {}, {}
 			for i = 1, #a do ca[a[i]] = (ca[a[i]] or 0) + 1 end
-			F.Y()
+			if F.Y then F.Y() end
 			for i = 1, #b do cb[b[i]] = (cb[b[i]] or 0) + 1 end
-			F.Y()
+			if F.Y then F.Y() end
 			local ra, rb = {}, {}
 			for k, v in pairs(cb) do ra[k] = v end
 			for k, v in pairs(ca) do rb[k] = v end
@@ -201,7 +202,7 @@ if CFG.sandbox == nil then CFG.sandbox = false end
 					nr = nr + 1
 					if nr <= 60 then rem[#rem + 1] = string.format("%5d: %s", i, l:sub(1, 140)) end
 				end
-				if i % 500 == 0 then F.Y() end
+				if i % 500 == 0 and F.Y then F.Y() end
 			end
 			for i = 1, #b do
 				local l = b[i]
@@ -212,7 +213,7 @@ if CFG.sandbox == nil then CFG.sandbox = false end
 					na = na + 1
 					if na <= 60 then add[#add + 1] = string.format("%5d: %s", i, l:sub(1, 140)) end
 				end
-				if i % 500 == 0 then F.Y() end
+				if i % 500 == 0 and F.Y then F.Y() end
 			end
 			local out = { string.format("old %d lines, new %d lines, removed %d, added %d", #a, #b, nr, na) }
 			local sd = structDelta(oldSrc, newSrc)
@@ -324,54 +325,12 @@ if CFG.sandbox == nil then CFG.sandbox = false end
 		F.trace("spool recovery done")
 	end
 
-	D.writeOne = function()
-		if D.h > D.t then return false end
-		local it = D.q[D.h]
-		D.q[D.h] = nil
-		D.h = D.h + 1
-		local f, n = it.f, #it.s
-		if n >= D.pending then D.pending = 0 else D.pending = D.pending - n end
-		if f:find("%.dec%.lua$") or f:find("%.diff%.txt$") or f:find("%.sandbox%.txt$")
-			or f:find("%.report%.txt$") or f:find("%.deob%.lua$") or f:find("%.layer%d+%.lua$")
-			or f:find("%.deob%.json$") then
-			if pcall(writefile, PATH.d(f), it.s) then
-				D.extraFiles[f] = n
-				D.extraBytes = (D.extraBytes or 0) + n
-			else
-				D.fail = D.fail + 1
-			end
-			D.dirtyDump = true
-			X.dirty = true
-			return true
-		end
-		if D.storeBytes + n <= STORE_MAX then
-			D.store[f] = it.s
-			D.storeBytes = D.storeBytes + n
-			spoolAppend(f, it.s)
-			D.files[#D.files + 1] = { f = f, n = n }
-			D.bytes = (D.bytes or 0) + n
-		elseif pcall(writefile, PATH.d(f), it.s) then
-			D.spilled[f] = n
-			D.files[#D.files + 1] = { f = f, n = n }
-			D.bytes = (D.bytes or 0) + n
-		else
-			D.fail = D.fail + 1
-		end
-		D.dirtyDump = true
-		X.dirty = true
-		return true
+	F.api.split = function(on)
+		if on == nil then return CFG.splitMode == true end
+		CFG.splitMode = on and true or false
+		F.cfgSave()
+		return CFG.splitMode
 	end
-
-	local baseRead = FS.read
-	local pfx = PATH.ok and (PATH.dumpDir .. "/") or "AluzDump_"
-	FS.read = function(name)
-		local v = baseRead(name)
-		if v ~= nil then return v end
-		if type(name) == "string" and name:sub(1, #pfx) == pfx then return D.store[name:sub(#pfx + 1)] end
-		return nil
-	end
-
-	F.api.split = function() return false end
 	F.api.saveIndex = saveIndex
 
 	F.extra.dump2 = function()
@@ -381,6 +340,7 @@ if CFG.sandbox == nil then CFG.sandbox = false end
 			hash = HASHFN ~= nil, store_mb = floor(D.storeBytes / 1048576), spilled = next(D.spilled) ~= nil,
 			seen_before = IDX.seen, variants = IDX.vars, diffs = IDX.diffs,
 			extra_files = extra, extra_bytes = D.extraBytes or 0, spool = PATH.spool,
+			kind = D.kind, disk = D.bytes or 0,
 		}
 	end
 end, function(e)
